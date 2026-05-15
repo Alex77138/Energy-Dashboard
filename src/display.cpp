@@ -1,6 +1,22 @@
 #include "display.h"
+#include <Arduino_GFX_Library.h>
 
-LGFX_JC8048W550 gfx;
+#define TFT_BL 2
+
+static Arduino_ESP32RGBPanel *_bus = new Arduino_ESP32RGBPanel(
+    GFX_NOT_DEFINED, GFX_NOT_DEFINED, GFX_NOT_DEFINED,
+    40 /* DE */, 41 /* VSYNC */, 39 /* HSYNC */, 42 /* PCLK */,
+    45, 48, 47, 21, 14, /* R0-R4 */
+    5, 6, 7, 15, 16, 4, /* G0-G5 */
+    8, 3, 46, 9, 1       /* B0-B4 */
+);
+
+static Arduino_RPi_DPI_RGBPanel *_gfx = new Arduino_RPi_DPI_RGBPanel(
+    _bus,
+    800, 0, 8, 4, 8,   /* width, hsync_pol, hfp, hpw, hbp */
+    480, 0, 8, 4, 8,   /* height, vsync_pol, vfp, vpw, vbp */
+    1, 16000000, true  /* pclk_active_neg, freq, auto_flush */
+);
 
 static lv_disp_draw_buf_t draw_buf;
 static lv_color_t s_buf1[800 * 20];
@@ -9,37 +25,30 @@ static lv_color_t s_buf2[800 * 20];
 static void flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_p) {
     const uint32_t w = (uint32_t)(area->x2 - area->x1 + 1);
     const uint32_t h = (uint32_t)(area->y2 - area->y1 + 1);
-
-    static bool first = true;
-    if (first) {
-        Serial.printf("[flush] 1er appel x=%d y=%d w=%u h=%u\n", area->x1, area->y1, w, h);
-        first = false;
-    }
-
-    // pushImage déclenche endWrite() → display() → Cache_WriteBack_Addr() via _auto_display.
-    gfx.pushImage(area->x1, area->y1, w, h, (lgfx::rgb565_t*)color_p);
+    _gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t *)&color_p->full, w, h);
     lv_disp_flush_ready(drv);
 }
 
 bool display_init(uint8_t rotation) {
     (void)rotation;
 
-    Serial.println("[display] init...");
-    if (!gfx.init()) {
-        Serial.println("[display] gfx.init ECHEC — PSRAM ou panel?");
-        return false;
-    }
-    Serial.println("[display] gfx.init OK");
-    gfx.setBrightness(200);
+    Serial.println("[display] init Arduino_GFX...");
+    _gfx->begin();
+    Serial.println("[display] gfx->begin() OK");
 
-    // Diagnostic RGB via LovyanGFX — endWrite() → display() → Cache_WriteBack_Addr auto
+    pinMode(TFT_BL, OUTPUT);
+    digitalWrite(TFT_BL, HIGH);
+
     Serial.println("[display] TEST Rouge...");
-    gfx.fillScreen(TFT_RED);   delay(800);
+    _gfx->fillScreen(RED);
+    delay(3000);
     Serial.println("[display] TEST Vert...");
-    gfx.fillScreen(TFT_GREEN); delay(800);
+    _gfx->fillScreen(GREEN);
+    delay(3000);
     Serial.println("[display] TEST Bleu...");
-    gfx.fillScreen(TFT_BLUE);  delay(800);
-    gfx.fillScreen(TFT_BLACK);
+    _gfx->fillScreen(BLUE);
+    delay(3000);
+    _gfx->fillScreen(BLACK);
     Serial.println("[display] TEST couleurs OK");
 
     lv_init();
