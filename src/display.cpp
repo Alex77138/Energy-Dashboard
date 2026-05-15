@@ -21,49 +21,23 @@ static Arduino_RPi_DPI_RGBPanel *_gfx = new Arduino_RPi_DPI_RGBPanel(
 static lv_disp_draw_buf_t draw_buf;
 static lv_color_t s_buf1[800 * 20];
 static lv_color_t s_buf2[800 * 20];
-static uint8_t s_rotation = 0;
 
 static void flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_p) {
-    const int16_t x1 = area->x1, y1 = area->y1;
-    const int16_t w  = area->x2 - area->x1 + 1;
-    const int16_t h  = area->y2 - area->y1 + 1;
-
-    if (s_rotation == 2) {
-        // 180° : inverser tous les pixels du tile (miroir X+Y) puis écrire aux coords opposées
-        uint16_t *p = (uint16_t *)color_p;
-        uint16_t *q = p + (int32_t)w * h - 1;
-        while (p < q) { uint16_t t = *p; *p++ = *q; *q-- = t; }
-        _gfx->draw16bitRGBBitmap(800 - x1 - w, 480 - y1 - h, (uint16_t *)color_p, w, h);
-    } else {
-        _gfx->draw16bitRGBBitmap(x1, y1, (uint16_t *)color_p, w, h);
-    }
+    const int16_t w = area->x2 - area->x1 + 1;
+    const int16_t h = area->y2 - area->y1 + 1;
+    _gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t *)color_p, w, h);
     lv_disp_flush_ready(drv);
 }
 
 bool display_init(uint8_t rotation) {
-    s_rotation = rotation;
-
-    Serial.println("[display] init Arduino_GFX...");
+    Serial.println("[display] init...");
     _gfx->begin();
-    Serial.println("[display] gfx->begin() OK");
 
     pinMode(TFT_BL, OUTPUT);
     digitalWrite(TFT_BL, HIGH);
-
-    Serial.println("[display] TEST Rouge...");
-    _gfx->fillScreen(RED);
-    delay(3000);
-    Serial.println("[display] TEST Vert...");
-    _gfx->fillScreen(GREEN);
-    delay(3000);
-    Serial.println("[display] TEST Bleu...");
-    _gfx->fillScreen(BLUE);
-    delay(3000);
     _gfx->fillScreen(BLACK);
-    Serial.println("[display] TEST couleurs OK");
 
     lv_init();
-    Serial.println("[display] lv_init OK");
 
     lv_disp_draw_buf_init(&draw_buf, s_buf1, s_buf2, 800 * 20);
 
@@ -74,9 +48,13 @@ bool display_init(uint8_t rotation) {
     disp_drv.flush_cb     = flush_cb;
     disp_drv.draw_buf     = &draw_buf;
     disp_drv.full_refresh = 0;
+    if (rotation == 2) {
+        disp_drv.sw_rotate = 1;
+        disp_drv.rotated   = LV_DISP_ROT_180;
+    }
     lv_disp_drv_register(&disp_drv);
 
-    Serial.println("[display] LVGL OK");
+    Serial.printf("[display] OK rotation=%d\n", rotation);
     return true;
 }
 
