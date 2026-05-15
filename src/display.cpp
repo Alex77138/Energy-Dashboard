@@ -21,16 +21,27 @@ static Arduino_RPi_DPI_RGBPanel *_gfx = new Arduino_RPi_DPI_RGBPanel(
 static lv_disp_draw_buf_t draw_buf;
 static lv_color_t s_buf1[800 * 20];
 static lv_color_t s_buf2[800 * 20];
+static uint8_t s_rotation = 0;
 
 static void flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_p) {
-    const uint32_t w = (uint32_t)(area->x2 - area->x1 + 1);
-    const uint32_t h = (uint32_t)(area->y2 - area->y1 + 1);
-    _gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t *)&color_p->full, w, h);
+    const int16_t x1 = area->x1, y1 = area->y1;
+    const int16_t w  = area->x2 - area->x1 + 1;
+    const int16_t h  = area->y2 - area->y1 + 1;
+
+    if (s_rotation == 2) {
+        // 180° : inverser tous les pixels du tile (miroir X+Y) puis écrire aux coords opposées
+        uint16_t *p = (uint16_t *)color_p;
+        uint16_t *q = p + (int32_t)w * h - 1;
+        while (p < q) { uint16_t t = *p; *p++ = *q; *q-- = t; }
+        _gfx->draw16bitRGBBitmap(800 - x1 - w, 480 - y1 - h, (uint16_t *)color_p, w, h);
+    } else {
+        _gfx->draw16bitRGBBitmap(x1, y1, (uint16_t *)color_p, w, h);
+    }
     lv_disp_flush_ready(drv);
 }
 
 bool display_init(uint8_t rotation) {
-    (void)rotation;
+    s_rotation = rotation;
 
     Serial.println("[display] init Arduino_GFX...");
     _gfx->begin();
