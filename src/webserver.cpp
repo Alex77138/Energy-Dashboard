@@ -63,7 +63,39 @@ void webserver_log(const AppData &d) {
         day_head = (day_head + 1) % 288;
         if (day_count < 288) day_count++;
         taskEXIT_CRITICAL(&day_mux);
+
+        // Persistance sur SD : snapshot hors section critique
+        static DayPoint ring_snap[288];
+        int snap_yday, snap_count, snap_head;
+        int32_t snap_last_ts;
+        taskENTER_CRITICAL(&day_mux);
+        snap_yday    = day_yday;
+        snap_count   = day_count;
+        snap_head    = day_head;
+        snap_last_ts = day_last_ts;
+        memcpy(ring_snap, day_ring, sizeof(day_ring));
+        taskEXIT_CRITICAL(&day_mux);
+        sd_save_day_ring(snap_yday, snap_count, snap_head, snap_last_ts,
+                         ring_snap, sizeof(ring_snap));
     }
+}
+
+void webserver_restore_day_ring() {
+    int saved_yday, saved_count, saved_head;
+    int32_t saved_last_ts;
+    static DayPoint tmp[288];
+    if (!sd_load_day_ring(&saved_yday, &saved_count, &saved_head, &saved_last_ts,
+                           tmp, sizeof(tmp))) return;
+    struct tm ti;
+    if (!getLocalTime(&ti, 0) || ti.tm_yday != saved_yday) return;
+    taskENTER_CRITICAL(&day_mux);
+    day_yday    = saved_yday;
+    day_count   = saved_count;
+    day_head    = saved_head;
+    day_last_ts = saved_last_ts;
+    memcpy(day_ring, tmp, sizeof(day_ring));
+    taskEXIT_CRITICAL(&day_mux);
+    Serial.printf("[web] ring restaure: %d pts depuis la SD\n", saved_count);
 }
 
 // ─── Page HTML (V0.7) ────────────────────────────────────────────────────────

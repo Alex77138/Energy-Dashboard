@@ -61,6 +61,25 @@ static void poll_task(void *) {
 
     for (;;) {
         if (WiFi.status() == WL_CONNECTED) {
+            // ── Restauration au premier cycle après sync NTP ─────────────────
+            static bool daily_loaded = false;
+            if (!daily_loaded) {
+                struct tm ti;
+                if (getLocalTime(&ti, 0)) {
+                    int saved_yday; float saved_gb, saved_sb;
+                    if (sd_load_daily(&saved_yday, &saved_gb, &saved_sb) &&
+                        saved_yday == ti.tm_yday) {
+                        last_yday  = saved_yday;
+                        grid_base  = saved_gb;
+                        solar_base = saved_sb;
+                        Serial.printf("[poll] Baselines restaurees J%d: reseau=%.3f solar=%.3f kWh\n",
+                                      saved_yday, grid_base, solar_base);
+                    }
+                    webserver_restore_day_ring();
+                    daily_loaded = true;
+                }
+            }
+
             AppData tmp = {};
 
             switch (g_cfg.grid_device) {
@@ -131,6 +150,7 @@ static void poll_task(void *) {
                         last_yday  = ti.tm_yday;
                         grid_base  = tmp.grid.today_kwh;
                         solar_base = tmp.solar.today_kwh;
+                        sd_save_daily(last_yday, grid_base, solar_base);
                     }
                 }
                 // Réseau : toujours cumulatif (Shelly/HA)

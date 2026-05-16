@@ -8,8 +8,10 @@ static const int SD_PIN_MOSI = 11;  // Master Out Slave In
 static const int SD_PIN_CLK  = 12;  // Clock
 static const int SD_PIN_MISO = 13;  // Master In Slave Out
 
-static const char *LOG_FILE = "/energy_log.csv";
+static const char *LOG_FILE   = "/energy_log.csv";
 static const char *CSV_HEADER = "ts,gp_w,gk_kwh,sp_w,sk_kwh";
+static const char *DAILY_FILE = "/daily.bin";
+static const char *RING_FILE  = "/dayring.bin";
 static const long  UNIX_2024 = 1704067200L;
 
 static bool s_ready = false;
@@ -62,6 +64,56 @@ void sd_log(const AppData &d) {
         d.solar.today_kwh);
     f.println(row);
     f.close();
+}
+
+bool sd_save_daily(int yday, float grid_base, float solar_base) {
+    if (!s_ready) return false;
+    File f = SD.open(DAILY_FILE, FILE_WRITE);
+    if (!f) return false;
+    f.write((uint8_t*)&yday,       sizeof(yday));
+    f.write((uint8_t*)&grid_base,  sizeof(grid_base));
+    f.write((uint8_t*)&solar_base, sizeof(solar_base));
+    f.close();
+    return true;
+}
+
+bool sd_load_daily(int *yday, float *grid_base, float *solar_base) {
+    if (!s_ready || !SD.exists(DAILY_FILE)) return false;
+    File f = SD.open(DAILY_FILE, FILE_READ);
+    if (!f) return false;
+    bool ok = f.read((uint8_t*)yday,       sizeof(int))   == sizeof(int)   &&
+              f.read((uint8_t*)grid_base,  sizeof(float)) == sizeof(float) &&
+              f.read((uint8_t*)solar_base, sizeof(float)) == sizeof(float);
+    f.close();
+    return ok;
+}
+
+bool sd_save_day_ring(int yday, int count, int head, int32_t last_ts,
+                      const void *data, size_t data_sz) {
+    if (!s_ready) return false;
+    File f = SD.open(RING_FILE, FILE_WRITE);
+    if (!f) return false;
+    f.write((uint8_t*)&yday,    sizeof(yday));
+    f.write((uint8_t*)&count,   sizeof(count));
+    f.write((uint8_t*)&head,    sizeof(head));
+    f.write((uint8_t*)&last_ts, sizeof(last_ts));
+    f.write((uint8_t*)data, data_sz);
+    f.close();
+    return true;
+}
+
+bool sd_load_day_ring(int *yday, int *count, int *head, int32_t *last_ts,
+                      void *data, size_t data_sz) {
+    if (!s_ready || !SD.exists(RING_FILE)) return false;
+    File f = SD.open(RING_FILE, FILE_READ);
+    if (!f) return false;
+    bool ok = f.read((uint8_t*)yday,    sizeof(int))     == sizeof(int)     &&
+              f.read((uint8_t*)count,   sizeof(int))     == sizeof(int)     &&
+              f.read((uint8_t*)head,    sizeof(int))     == sizeof(int)     &&
+              f.read((uint8_t*)last_ts, sizeof(int32_t)) == sizeof(int32_t) &&
+              f.read((uint8_t*)data, data_sz)            == (int)data_sz;
+    f.close();
+    return ok;
 }
 
 bool sd_get_history(char *out, size_t out_sz, int count) {

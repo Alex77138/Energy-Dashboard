@@ -134,9 +134,6 @@ void ui_create() {
 
         lbl_solar_power  = make_label(c, "--", &lv_font_montserrat_48, C_MUTED,
                                        LV_ALIGN_TOP_LEFT, 0, 44);
-        // Contrainte largeur si la jauge est présente
-        if (g_cfg.solar_max_w > 0)
-            lv_obj_set_width(lbl_solar_power, 200);
 
         lbl_solar_kwh    = make_label(c, "Auj : -- kWh", &lv_font_montserrat_16, C_MUTED,
                                        LV_ALIGN_TOP_LEFT, 0, 114);
@@ -157,39 +154,24 @@ void ui_create() {
                                             LV_ALIGN_TOP_LEFT, 0, 290);
         }
 
-        // ── Jauge arc (si puissance max configurée) ──────────────────────────
+        // ── Jauge barre horizontale (si puissance max configurée) ─────────────
         if (g_cfg.solar_max_w > 0) {
-            solar_arc = lv_arc_create(c);
-            lv_obj_set_size(solar_arc, 130, 130);
-            lv_arc_set_mode(solar_arc, LV_ARC_MODE_NORMAL);
-            lv_arc_set_rotation(solar_arc, 135);
-            lv_arc_set_bg_angles(solar_arc, 0, 270);
-            lv_arc_set_range(solar_arc, 0, g_cfg.solar_max_w);
-            lv_arc_set_value(solar_arc, 0);
-            lv_obj_remove_style(solar_arc, nullptr, LV_PART_KNOB);
-            lv_obj_clear_flag(solar_arc, LV_OBJ_FLAG_CLICKABLE);
-            lv_obj_set_style_arc_width(solar_arc, 10, LV_PART_MAIN);
-            lv_obj_set_style_arc_width(solar_arc, 10, LV_PART_INDICATOR);
-            lv_obj_set_style_arc_color(solar_arc, C_BORDER, LV_PART_MAIN);
-            lv_obj_set_style_arc_color(solar_arc, C_SOLAR, LV_PART_INDICATOR);
-            lv_obj_set_style_bg_opa(solar_arc, LV_OPA_TRANSP, LV_PART_MAIN);
-            lv_obj_align(solar_arc, LV_ALIGN_TOP_RIGHT, 0, 25);
-
-            // % au centre de l'arc
-            solar_arc_pct = lv_label_create(solar_arc);
-            lv_label_set_text(solar_arc_pct, "0%");
-            lv_obj_set_style_text_font(solar_arc_pct, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(solar_arc_pct, C_TEXT, 0);
-            lv_obj_align(solar_arc_pct, LV_ALIGN_CENTER, 0, 0);
-
-            // Max Wc en dessous de l'arc
-            char maxbuf[16];
-            snprintf(maxbuf, sizeof(maxbuf), "%d Wc", g_cfg.solar_max_w);
-            lv_obj_t *max_lbl = lv_label_create(c);
-            lv_label_set_text(max_lbl, maxbuf);
-            lv_obj_set_style_text_font(max_lbl, &lv_font_montserrat_12, 0);
-            lv_obj_set_style_text_color(max_lbl, C_MUTED, 0);
-            lv_obj_align(max_lbl, LV_ALIGN_TOP_RIGHT, 0, 162);
+            // % à droite de la ligne kWh
+            solar_arc_pct = make_label(c, "0%", &lv_font_montserrat_16, C_MUTED,
+                                        LV_ALIGN_TOP_RIGHT, 0, 114);
+            // Barre de progression pleine largeur
+            solar_arc = lv_bar_create(c);
+            lv_obj_set_size(solar_arc, CARD_W_2 - 28, 8);
+            lv_bar_set_range(solar_arc, 0, g_cfg.solar_max_w);
+            lv_bar_set_value(solar_arc, 0, LV_ANIM_OFF);
+            lv_obj_set_style_bg_color(solar_arc, C_BORDER, LV_PART_MAIN);
+            lv_obj_set_style_bg_color(solar_arc, C_SOLAR, LV_PART_INDICATOR);
+            lv_obj_set_style_bg_opa(solar_arc, LV_OPA_COVER, LV_PART_MAIN);
+            lv_obj_set_style_bg_opa(solar_arc, LV_OPA_COVER, LV_PART_INDICATOR);
+            lv_obj_set_style_radius(solar_arc, 4, LV_PART_MAIN);
+            lv_obj_set_style_radius(solar_arc, 4, LV_PART_INDICATOR);
+            lv_obj_set_style_border_width(solar_arc, 0, 0);
+            lv_obj_align(solar_arc, LV_ALIGN_TOP_LEFT, 0, 136);
         }
 
         lv_obj_t *tag = lv_label_create(c);
@@ -296,18 +278,17 @@ void ui_update(const AppData &d) {
         }
     }
 
-    // ── Jauge arc ─────────────────────────────────────────────────────────────
+    // ── Jauge barre ───────────────────────────────────────────────────────────
     if (solar_arc && g_cfg.solar_max_w > 0) {
         int val = (int)d.solar.power_w;
         if (val < 0) val = 0;
         if (val > g_cfg.solar_max_w) val = g_cfg.solar_max_w;
-        lv_arc_set_value(solar_arc, val);
+        lv_bar_set_value(solar_arc, val, LV_ANIM_OFF);
         int pct = val * 100 / g_cfg.solar_max_w;
         snprintf(buf, sizeof(buf), "%d%%", pct);
         lv_label_set_text(solar_arc_pct, buf);
-        // Couleur selon le rendement
-        lv_color_t col = pct >= 80 ? C_GREEN : (pct >= 40 ? C_SOLAR : C_MUTED);
-        lv_obj_set_style_arc_color(solar_arc, col, LV_PART_INDICATOR);
+        lv_color_t col = pct >= 80 ? C_GREEN : C_SOLAR;
+        lv_obj_set_style_bg_color(solar_arc, col, LV_PART_INDICATOR);
     }
 
     // ── Batterie ──────────────────────────────────────────────────────────────
