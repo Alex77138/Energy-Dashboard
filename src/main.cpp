@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <DNSServer.h>
 #include <Preferences.h>
 #include <time.h>
 #include "config.h"
@@ -17,30 +18,47 @@
 #include "sd_logger.h"
 #include "ha_fetch.h"
 #include "fronius.h"
+#include "battery.h"
 
 AppData g_data;
 
-static bool     web_started     = false;
-bool            ap_active       = false;
-static uint32_t last_ui_update  = 0;
-static uint32_t last_wifi_retry = 0;
+static bool      web_started     = false;
+bool             ap_active       = false;
+static uint32_t  last_ui_update  = 0;
+static uint32_t  last_wifi_retry = 0;
+static DNSServer dns_server;
 
 static void ap_start() {
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP("DashEnergy-Config", "");
     ap_active = true;
+    // Portail captif : redirige toutes les requêtes DNS vers 192.168.4.1
+    dns_server.start(53, "*", IPAddress(192, 168, 4, 1));
     Serial.println("[ap] DashEnergy-Config actif — http://192.168.4.1/");
 }
 
 static void ap_stop() {
+    dns_server.stop();
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_STA);
     ap_active = false;
     Serial.println("[ap] AP desactive");
 }
 
+// ─── Sources qui fournissent déjà l'énergie journalière (pas cumulatif) ───────
+static bool solar_provides_daily() {
+    return g_cfg.solar_device == SolarDevice::OPENDTU  ||
+           g_cfg.solar_device == SolarDevice::AHOYDTU  ||
+           g_cfg.solar_device == SolarDevice::FRONIUS;
+}
+
 // ─── Tâche de polling (core 0) ────────────────────────────────────────────────
 static void poll_task(void *) {
+    // Baseline énergie journalière (corrige les sources cumulatives Shelly)
+    static int   last_yday = -1;
+    static float grid_base  = 0.0f;
+    static float solar_base = 0.0f;
+
     for (;;) {
         if (WiFi.status() == WL_CONNECTED) {
             AppData tmp = {};
@@ -101,18 +119,43 @@ static void poll_task(void *) {
                 default: break;
             }
 
-            Serial.printf("[poll] Grid: online=%d %.0fW  Solar: online=%d %.0fW\n",
-                          tmp.grid.online, tmp.grid.power_w,
-                          tmp.solar.online, tmp.solar.power_w);
+            if (g_cfg.battery_device == BatteryDevice::ESPHOME_JKBMS)
+                esphome_jkbms_fetch(tmp.battery, g_cfg.battery_host);
+
+            // ── Correction énergie journalière pour sources cumulatives ──────
+            {
+                struct tm ti;
+                if (getLocalTime(&ti, 0)) {
+                    if (ti.tm_yday != last_yday) {
+                        // Nouveau jour (ou premier boot) : mémoriser le palier
+                        last_yday  = ti.tm_yday;
+                        grid_base  = tmp.grid.today_kwh;
+                        solar_base = tmp.solar.today_kwh;
+                    }
+                }
+                // Réseau : toujours cumulatif (Shelly/HA)
+                float g_d = tmp.grid.today_kwh - grid_base;
+                tmp.grid.today_kwh = (g_d > 0) ? g_d : 0;
+
+                // Solaire : cumulatif sauf OpenDTU/AhoyDTU/Fronius (déjà journalier)
+                if (!solar_provides_daily()) {
+                    float s_d = tmp.solar.today_kwh - solar_base;
+                    tmp.solar.today_kwh = (s_d > 0) ? s_d : 0;
+                }
+            }
+
+            Serial.printf("[poll] Grid: online=%d %.0fW %.3fkWh  Solar: online=%d %.0fW %.3fkWh\n",
+                          tmp.grid.online, tmp.grid.power_w, tmp.grid.today_kwh,
+                          tmp.solar.online, tmp.solar.power_w, tmp.solar.today_kwh);
 
             tmp.mutex = g_data.mutex;
             if (xSemaphoreTake(g_data.mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                g_data.grid  = tmp.grid;
-                g_data.solar = tmp.solar;
+                g_data.grid    = tmp.grid;
+                g_data.solar   = tmp.solar;
+                g_data.battery = tmp.battery;
                 xSemaphoreGive(g_data.mutex);
             }
 
-            // Publish after releasing mutex (pass local copy)
             mqtt_loop(tmp);
             sd_log(tmp);
             webserver_log(tmp);
@@ -131,6 +174,10 @@ void setup() {
                   (int)g_cfg.grid_device,  g_cfg.grid_host,
                   (int)g_cfg.solar_device, g_cfg.solar_host,
                   g_cfg.display_rotation);
+
+    // Fuseau horaire appliqué immédiatement (fix NTP en retard de 2h)
+    setenv("TZ", g_cfg.timezone, 1);
+    tzset();
 
     g_data.mutex = xSemaphoreCreateMutex();
 
@@ -189,10 +236,7 @@ void setup() {
     if (WiFi.status() == WL_CONNECTED) {
         Serial.println(" OK — " + WiFi.localIP().toString());
         ap_stop();
-        // NTP avec fuseau horaire POSIX
-        setenv("TZ", g_cfg.timezone, 1);
-        tzset();
-        configTime(0, 0, "pool.ntp.org", "time.google.com");
+        configTzTime(g_cfg.timezone, "pool.ntp.org", "time.google.com");
         Serial.printf("[ntp] TZ=%s — sync en cours...\n", g_cfg.timezone);
     } else {
         Serial.println(" ECHEC — AP actif, reconnexion auto 30s");
@@ -212,6 +256,8 @@ void loop() {
 
     uint32_t now = millis();
 
+    if (ap_active) dns_server.processNextRequest();
+
     if (WiFi.status() != WL_CONNECTED) {
         if (!ap_active) ap_start();
         if (now - last_wifi_retry > 30000) {
@@ -221,9 +267,7 @@ void loop() {
     } else {
         if (ap_active) {
             ap_stop();
-            setenv("TZ", g_cfg.timezone, 1);
-            tzset();
-            configTime(0, 0, "pool.ntp.org", "time.google.com");
+            configTzTime(g_cfg.timezone, "pool.ntp.org", "time.google.com");
         }
     }
 

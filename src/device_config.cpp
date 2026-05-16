@@ -46,6 +46,10 @@ void device_config_load() {
     s = p.getString("timezone", "CET-1CEST,M3.5.0,M10.5.0/3");
     strncpy(g_cfg.timezone, s.c_str(), sizeof(g_cfg.timezone) - 1);
 
+    g_cfg.battery_device = (BatteryDevice)p.getUChar("bat_dev", 0);
+    s = p.getString("bat_host", "");
+    strncpy(g_cfg.battery_host, s.c_str(), sizeof(g_cfg.battery_host) - 1);
+
     p.end();
 }
 
@@ -66,6 +70,8 @@ void device_config_save(const DeviceConfig &cfg) {
     p.putString("grid_entity",  cfg.grid_entity);
     p.putString("solar_entity", cfg.solar_entity);
     p.putString("timezone",     cfg.timezone);
+    p.putUChar ("bat_dev",      (uint8_t)cfg.battery_device);
+    p.putString("bat_host",     cfg.battery_host);
     p.end();
 }
 
@@ -81,6 +87,13 @@ const char *grid_device_label(GridDevice d) {
         case GridDevice::F1ATB:             return "Routeur F1ATB";
         case GridDevice::HOME_ASSISTANT:    return "Home Assistant";
         default:                             return "Non configure";
+    }
+}
+
+const char *battery_device_label(BatteryDevice d) {
+    switch (d) {
+        case BatteryDevice::ESPHOME_JKBMS: return "syssi/esphome-jk-bms (ESPHome)";
+        default:                            return "Non configure";
     }
 }
 

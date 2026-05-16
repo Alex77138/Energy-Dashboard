@@ -27,9 +27,16 @@ struct RouterData {
     bool  online     = false;
 };
 
+struct BatteryData {
+    float power_w  = 0;   // positif = décharge, négatif = charge
+    float soc_pct  = 0;
+    bool  online   = false;
+};
+
 struct AppData {
-    GridData  grid;
-    SolarData solar;
+    GridData    grid;
+    SolarData   solar;
+    BatteryData battery;
     SemaphoreHandle_t mutex = nullptr;
 };
 

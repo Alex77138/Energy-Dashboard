@@ -29,11 +29,14 @@ static constexpr int CARD_W_1   = 800 - 2 * MARGIN;                  // 784 (mod
 static lv_obj_t *lbl_grid_status, *lbl_grid_power, *lbl_grid_kwh;
 static lv_obj_t *lbl_solar_status, *lbl_solar_power, *lbl_solar_kwh;
 static lv_obj_t *lbl_solar_dc, *lbl_solar_limit;
-static lv_obj_t *lbl_autoconso  = nullptr;
-static lv_obj_t *lbl_autosuff   = nullptr;
+static lv_obj_t *lbl_autoconso    = nullptr;
+static lv_obj_t *lbl_autosuff     = nullptr;
+static lv_obj_t *lbl_battery_power = nullptr;
+static lv_obj_t *lbl_battery_soc   = nullptr;
 static lv_obj_t *lbl_ip_bar;
 static lv_obj_t *solar_arc     = nullptr;
 static lv_obj_t *solar_arc_pct = nullptr;
+static lv_obj_t *ind_strip     = nullptr;  // liseré indicateur en haut
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 static lv_obj_t *make_card(lv_obj_t *parent, int x, int y, int w, lv_color_t accent) {
@@ -97,6 +100,14 @@ void ui_create() {
         make_label(c, "(+) import  /  (-) export",
                    &lv_font_montserrat_12, C_MUTED, LV_ALIGN_TOP_LEFT, 0, 148);
 
+        if (!solar_enabled && g_cfg.battery_device != BatteryDevice::NONE) {
+            make_label(c, "BATTERIE", &lv_font_montserrat_12, C_MUTED, LV_ALIGN_TOP_LEFT, 0, 178);
+            lbl_battery_power = make_label(c, "--", &lv_font_montserrat_14, C_MUTED,
+                                            LV_ALIGN_TOP_LEFT, 0, 196);
+            lbl_battery_soc   = make_label(c, "--", &lv_font_montserrat_14, C_MUTED,
+                                            LV_ALIGN_TOP_LEFT, 0, 216);
+        }
+
         lv_obj_t *tag = lv_label_create(c);
         lv_label_set_text(tag, g_cfg.grid_host[0]
             ? grid_device_label(g_cfg.grid_device)
@@ -138,15 +149,23 @@ void ui_create() {
         lbl_autosuff     = make_label(c, "", &lv_font_montserrat_14, C_GREEN,
                                        LV_ALIGN_TOP_LEFT, 0, 222);
 
+        if (g_cfg.battery_device != BatteryDevice::NONE) {
+            make_label(c, "BATTERIE", &lv_font_montserrat_12, C_MUTED, LV_ALIGN_TOP_LEFT, 0, 252);
+            lbl_battery_power = make_label(c, "--", &lv_font_montserrat_14, C_MUTED,
+                                            LV_ALIGN_TOP_LEFT, 0, 270);
+            lbl_battery_soc   = make_label(c, "--", &lv_font_montserrat_14, C_MUTED,
+                                            LV_ALIGN_TOP_LEFT, 0, 290);
+        }
+
         // ── Jauge arc (si puissance max configurée) ──────────────────────────
         if (g_cfg.solar_max_w > 0) {
             solar_arc = lv_arc_create(c);
             lv_obj_set_size(solar_arc, 130, 130);
+            lv_arc_set_mode(solar_arc, LV_ARC_MODE_NORMAL);
             lv_arc_set_rotation(solar_arc, 135);
             lv_arc_set_bg_angles(solar_arc, 0, 270);
             lv_arc_set_range(solar_arc, 0, g_cfg.solar_max_w);
             lv_arc_set_value(solar_arc, 0);
-            lv_arc_set_mode(solar_arc, LV_ARC_MODE_NORMAL);
             lv_obj_remove_style(solar_arc, nullptr, LV_PART_KNOB);
             lv_obj_clear_flag(solar_arc, LV_OBJ_FLAG_CLICKABLE);
             lv_obj_set_style_arc_width(solar_arc, 10, LV_PART_MAIN);
@@ -183,6 +202,17 @@ void ui_create() {
         lv_label_set_long_mode(tag, LV_LABEL_LONG_WRAP);
         lv_obj_align(tag, LV_ALIGN_BOTTOM_LEFT, 0, 0);
     }  // end solar card (else block)
+
+    // ── Liseré indicateur (haut de l'écran, 6 px) ────────────────────────────
+    ind_strip = lv_obj_create(scr);
+    lv_obj_set_pos(ind_strip, 0, 0);
+    lv_obj_set_size(ind_strip, 800, 6);
+    lv_obj_set_style_bg_color(ind_strip, C_MUTED, 0);
+    lv_obj_set_style_bg_opa(ind_strip, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_opa(ind_strip, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_radius(ind_strip, 0, 0);
+    lv_obj_set_style_pad_all(ind_strip, 0, 0);
+    lv_obj_clear_flag(ind_strip, LV_OBJ_FLAG_SCROLLABLE);
 
     // ── Barre IP en bas ────────────────────────────────────────────────────────
     lbl_ip_bar = lv_label_create(scr);
@@ -278,6 +308,40 @@ void ui_update(const AppData &d) {
         // Couleur selon le rendement
         lv_color_t col = pct >= 80 ? C_GREEN : (pct >= 40 ? C_SOLAR : C_MUTED);
         lv_obj_set_style_arc_color(solar_arc, col, LV_PART_INDICATOR);
+    }
+
+    // ── Batterie ──────────────────────────────────────────────────────────────
+    if (lbl_battery_power) {
+        if (d.battery.online) {
+            if (d.battery.power_w >= 0) {
+                fmt_power(buf, sizeof(buf), d.battery.power_w);
+                lv_obj_set_style_text_color(lbl_battery_power, C_SOLAR, 0);
+            } else {
+                fmt_power(buf, sizeof(buf), -d.battery.power_w);
+                lv_obj_set_style_text_color(lbl_battery_power, C_GREEN, 0);
+            }
+            char pbuf[32];
+            snprintf(pbuf, sizeof(pbuf), "%s%s",
+                     d.battery.power_w >= 0 ? "+" : "-", buf);
+            lv_label_set_text(lbl_battery_power, pbuf);
+            snprintf(buf, sizeof(buf), "SOC : %.0f%%", d.battery.soc_pct);
+            lv_label_set_text(lbl_battery_soc, buf);
+            lv_obj_set_style_text_color(lbl_battery_soc,
+                d.battery.soc_pct > 20 ? C_GREEN : C_DANGER, 0);
+        } else {
+            lv_label_set_text(lbl_battery_power, "--");
+            lv_obj_set_style_text_color(lbl_battery_power, C_MUTED, 0);
+            lv_label_set_text(lbl_battery_soc, "SOC : --");
+            lv_obj_set_style_text_color(lbl_battery_soc, C_MUTED, 0);
+        }
+    }
+
+    // ── Liseré indicateur ────────────────────────────────────────────────────
+    if (ind_strip) {
+        lv_color_t col = C_MUTED;
+        if      (d.grid.online && d.grid.power_w < -10) col = C_GREEN;
+        else if (d.grid.online && d.grid.power_w >  10) col = C_DANGER;
+        lv_obj_set_style_bg_color(ind_strip, col, 0);
     }
 
     // ── Barre IP ──────────────────────────────────────────────────────────────

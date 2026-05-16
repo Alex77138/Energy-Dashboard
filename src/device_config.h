@@ -29,6 +29,11 @@ enum class SolarDevice : uint8_t {
     FRONIUS,         // = 11
 };
 
+enum class BatteryDevice : uint8_t {
+    NONE = 0,
+    ESPHOME_JKBMS,  // syssi/esphome-jk-bms via ESPHome web_server = 1
+};
+
 struct DeviceConfig {
     char     device_name[32]   = "Dash Energy";
     GridDevice  grid_device    = GridDevice::NONE;
@@ -44,8 +49,11 @@ struct DeviceConfig {
     char     ha_token[192]     = "";   // Bearer token
     char     grid_entity[64]   = "";   // entity_id puissance réseau (W)
     char     solar_entity[64]  = "";   // entity_id puissance solaire (W)
+    // Batterie
+    BatteryDevice battery_device = BatteryDevice::NONE;
+    char     battery_host[64]    = "";
     // Heure
-    char     timezone[64]      = "CET-1CEST,M3.5.0,M10.5.0/3";  // France par défaut
+    char     timezone[64]        = "CET-1CEST,M3.5.0,M10.5.0/3";  // France par défaut
 };
 
 extern DeviceConfig g_cfg;
@@ -55,3 +63,4 @@ void device_config_save(const DeviceConfig &cfg);
 
 const char *grid_device_label(GridDevice d);
 const char *solar_device_label(SolarDevice d);
+const char *battery_device_label(BatteryDevice d);
