@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include "device_config.h"
 
 // Base commune à GridData et SolarData (même layout mémoire initial)
 struct MeasureData {
@@ -21,8 +22,11 @@ struct SolarData : public MeasureData {
 using ShellyEMData = MeasureData;
 
 struct RouterData {
-    float triac_pct  = 0;
+    float power_w    = 0;   // puissance routée (W)
+    float triac_pct  = 0;   // % ouverture triac (0–100)
     float today_kwh  = 0;
+    float duration_h = 0;   // durée équivalente (heures décimales)
+    bool  active     = false;
     bool  forced     = false;
     bool  online     = false;
 };
@@ -36,7 +40,8 @@ struct BatteryData {
 struct AppData {
     GridData    grid;
     SolarData   solar;
-    BatteryData battery;
+    BatteryData batteries[MAX_BATTERIES];
+    RouterData  routers[MAX_ROUTERS];
     SemaphoreHandle_t mutex = nullptr;
 };
 
