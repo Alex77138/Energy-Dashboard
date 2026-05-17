@@ -2,6 +2,16 @@
 
 #if defined(ESP32) && (CONFIG_IDF_TARGET_ESP32S3)
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+
+static bool IRAM_ATTR _vsync_isr_cb(esp_lcd_panel_handle_t, esp_lcd_rgb_panel_event_data_t *, void *ctx)
+{
+    BaseType_t woken = pdFALSE;
+    xSemaphoreGiveFromISR((SemaphoreHandle_t)ctx, &woken);
+    return woken == pdTRUE;
+}
+
 Arduino_ESP32RGBPanel::Arduino_ESP32RGBPanel(
     int8_t cs, int8_t sck, int8_t sda,
     int8_t de, int8_t vsync, int8_t hsync, int8_t pclk,
@@ -258,7 +268,19 @@ uint16_t *Arduino_ESP32RGBPanel::getFrameBuffer(
 
   _rgb_panel = __containerof(_panel_handle, esp_rgb_panel_t, base);
 
+  // Sémaphore vsync : donné par l'ISR à chaque fin de trame DMA
+  _vsync_sem = xSemaphoreCreateBinary();
+  _rgb_panel->on_frame_trans_done = _vsync_isr_cb;
+  _rgb_panel->user_ctx = _vsync_sem;
+
   return (uint16_t *)_rgb_panel->fb;
+}
+
+void Arduino_ESP32RGBPanel::waitVSync()
+{
+  if (_vsync_sem) {
+    xSemaphoreTake(_vsync_sem, pdMS_TO_TICKS(50));
+  }
 }
 
 INLINE void Arduino_ESP32RGBPanel::CS_HIGH(void)

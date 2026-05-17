@@ -111,21 +111,20 @@ static void fill_demo_data(AppData &tmp) {
 
 // ─── Sources qui fournissent déjà l'énergie journalière (pas cumulatif) ───────
 static bool solar_provides_daily() {
-    return g_cfg.solar_device == SolarDevice::OPENDTU  ||
-           g_cfg.solar_device == SolarDevice::AHOYDTU  ||
-           g_cfg.solar_device == SolarDevice::FRONIUS;
-    // Autres sources (Shelly, HA) → valeur cumulative → soustraction baseline nécessaire
+    return false; // Toutes sources envoient le total cumulé — baseline toujours appliquée
 }
 static bool grid_provides_daily() {
-    return false; // Toutes les sources réseau envoient le total cumulé
+    return false;
 }
 
 // ─── Tâche de polling (core 0) ────────────────────────────────────────────────
 static void poll_task(void *) {
-    // Baseline énergie journalière (corrige les sources cumulatives Shelly)
+    // Baseline énergie journalière (corrige les sources cumulatives)
     static int   last_yday = -1;
     static float grid_base  = 0.0f;
     static float solar_base = 0.0f;
+    static float router_base[MAX_ROUTERS] = {};
+    static bool  router_base_set = false;
 
     for (;;) {
         if (WiFi.status() == WL_CONNECTED) {
@@ -262,11 +261,21 @@ static void poll_task(void *) {
                 struct tm ti;
                 if (getLocalTime(&ti, 0)) {
                     if (ti.tm_yday != last_yday) {
-                        // Nouveau jour (ou premier boot) : mémoriser le palier
+                        // Nouveau jour (ou premier boot) : mémoriser les paliers
                         last_yday  = ti.tm_yday;
                         grid_base  = tmp.grid.today_kwh;
                         solar_base = tmp.solar.today_kwh;
+                        for (int i = 0; i < MAX_ROUTERS; i++)
+                            router_base[i] = tmp.routers[i].today_kwh;
+                        router_base_set = true;
                         sd_save_daily(last_yday, grid_base, solar_base);
+                    }
+                    // Premier poll avec heure valide : initialiser les baselines routeurs
+                    // (le bloc jour-changement est ignoré quand SD a déjà restauré last_yday)
+                    if (!router_base_set) {
+                        for (int i = 0; i < MAX_ROUTERS; i++)
+                            router_base[i] = tmp.routers[i].today_kwh;
+                        router_base_set = true;
                     }
                 }
                 // Réseau : cumulatif sauf si entité énergie HA configurée
@@ -275,10 +284,14 @@ static void poll_task(void *) {
                     tmp.grid.today_kwh = (g_d > 0) ? g_d : 0;
                 }
 
-                // Solaire : cumulatif sauf OpenDTU/AhoyDTU/Fronius/entité énergie HA
                 if (!solar_provides_daily()) {
                     float s_d = tmp.solar.today_kwh - solar_base;
                     tmp.solar.today_kwh = (s_d > 0) ? s_d : 0;
+                }
+                // Routeurs : soustraction baseline pour sources cumulatives
+                for (int i = 0; i < MAX_ROUTERS; i++) {
+                    float r_d = tmp.routers[i].today_kwh - router_base[i];
+                    tmp.routers[i].today_kwh = (r_d > 0) ? r_d : 0;
                 }
             }
 

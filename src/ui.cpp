@@ -22,7 +22,7 @@ static constexpr int MARGIN   = 8;
 static constexpr int GAP      = 8;
 static constexpr int BOT_H    = 22;
 static constexpr int TOTAL_H  = 480 - MARGIN - BOT_H;          // 450
-static constexpr int DEV_H    = 128;                            // hauteur rangée appareils
+static constexpr int DEV_H    = 168;                            // hauteur rangée appareils
 static constexpr int MAIN_H   = TOTAL_H - GAP - DEV_H;         // 314 quand appareils présents
 static constexpr int CARD_W_2 = (800 - 2 * MARGIN - GAP) / 2; // 388
 
@@ -40,9 +40,11 @@ static lv_obj_t *lbl_ip_bar;
 // Tableaux pour batteries/routeurs (indices alignés sur g_cfg)
 static lv_obj_t *lbl_bat_power[MAX_BATTERIES]    = {};
 static lv_obj_t *lbl_bat_soc[MAX_BATTERIES]      = {};
+static lv_obj_t *lbl_bat_status[MAX_BATTERIES]   = {};
 static lv_obj_t *lbl_rtr_power[MAX_ROUTERS]      = {};
 static lv_obj_t *lbl_rtr_duration[MAX_ROUTERS]   = {};
 static lv_obj_t *lbl_rtr_kwh[MAX_ROUTERS]        = {};
+static lv_obj_t *lbl_rtr_status[MAX_ROUTERS]     = {};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 static lv_obj_t *make_card(lv_obj_t *parent, int x, int y, int w, int h, lv_color_t accent) {
@@ -68,6 +70,62 @@ static lv_obj_t *make_label(lv_obj_t *p, const char *txt, const lv_font_t *font,
     lv_obj_set_style_text_color(l, col, 0);
     lv_obj_align(l, align, x, y);
     return l;
+}
+
+// Convertit une chaîne UTF-8 en ASCII en remplaçant les caractères accentués
+// par leur équivalent sans accent (é→e, à→a, ç→c, etc.)
+// Nécessaire car les polices LVGL intégrées n'incluent que l'ASCII de base.
+static const char *ascii(const char *src, char *buf, size_t sz) {
+    // Table : séquence UTF-8 (2 octets) → caractère ASCII
+    static const struct { uint8_t b1, b2; char out; } map[] = {
+        // Minuscules
+        {0xC3,0xA0,'a'},{0xC3,0xA1,'a'},{0xC3,0xA2,'a'},{0xC3,0xA3,'a'},{0xC3,0xA4,'a'},{0xC3,0xA5,'a'},
+        {0xC3,0xA7,'c'},
+        {0xC3,0xA8,'e'},{0xC3,0xA9,'e'},{0xC3,0xAA,'e'},{0xC3,0xAB,'e'},
+        {0xC3,0xAC,'i'},{0xC3,0xAD,'i'},{0xC3,0xAE,'i'},{0xC3,0xAF,'i'},
+        {0xC3,0xB1,'n'},
+        {0xC3,0xB2,'o'},{0xC3,0xB3,'o'},{0xC3,0xB4,'o'},{0xC3,0xB5,'o'},{0xC3,0xB6,'o'},
+        {0xC3,0xB9,'u'},{0xC3,0xBA,'u'},{0xC3,0xBB,'u'},{0xC3,0xBC,'u'},
+        {0xC3,0xBF,'y'},
+        // Majuscules
+        {0xC3,0x80,'A'},{0xC3,0x81,'A'},{0xC3,0x82,'A'},{0xC3,0x83,'A'},{0xC3,0x84,'A'},{0xC3,0x85,'A'},
+        {0xC3,0x87,'C'},
+        {0xC3,0x88,'E'},{0xC3,0x89,'E'},{0xC3,0x8A,'E'},{0xC3,0x8B,'E'},
+        {0xC3,0x8C,'I'},{0xC3,0x8D,'I'},{0xC3,0x8E,'I'},{0xC3,0x8F,'I'},
+        {0xC3,0x91,'N'},
+        {0xC3,0x92,'O'},{0xC3,0x93,'O'},{0xC3,0x94,'O'},{0xC3,0x95,'O'},{0xC3,0x96,'O'},
+        {0xC3,0x99,'U'},{0xC3,0x9A,'U'},{0xC3,0x9B,'U'},{0xC3,0x9C,'U'},
+        // œ/Œ (U+0153/U+0152 → 0xC5 0x93/0x92)
+        {0xC5,0x93,'o'},{0xC5,0x92,'O'},
+        // æ/Æ
+        {0xC3,0xA6,'a'},{0xC3,0x86,'A'},
+    };
+    const uint8_t *s = (const uint8_t *)src;
+    size_t di = 0;
+    while (*s && di + 1 < sz) {
+        if (*s < 0x80) {
+            buf[di++] = (char)*s++;
+        } else if (*s >= 0xC0 && s[1]) {
+            bool found = false;
+            for (auto &e : map) {
+                if (s[0] == e.b1 && s[1] == e.b2) {
+                    buf[di++] = e.out;
+                    s += 2;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                // Séquence multi-octet inconnue : skip
+                s++;
+                while (*s && (*s & 0xC0) == 0x80) s++;
+            }
+        } else {
+            s++;  // octet de continuation inattendu
+        }
+    }
+    buf[di] = '\0';
+    return buf;
 }
 
 static void fmt_power(char *buf, size_t sz, float w) {
@@ -103,9 +161,11 @@ void ui_create() {
     // Réinitialise les pointeurs
     memset(lbl_bat_power,   0, sizeof(lbl_bat_power));
     memset(lbl_bat_soc,     0, sizeof(lbl_bat_soc));
+    memset(lbl_bat_status,  0, sizeof(lbl_bat_status));
     memset(lbl_rtr_power,   0, sizeof(lbl_rtr_power));
     memset(lbl_rtr_duration,0, sizeof(lbl_rtr_duration));
     memset(lbl_rtr_kwh,     0, sizeof(lbl_rtr_kwh));
+    memset(lbl_rtr_status,  0, sizeof(lbl_rtr_status));
     solar_bar = solar_bar_pct = nullptr;
     lbl_autoconso = lbl_autosuff = nullptr;
     lbl_solar_status = lbl_solar_power = lbl_solar_kwh = nullptr;
@@ -118,25 +178,27 @@ void ui_create() {
     lv_obj_clean(scr);
     lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
+    char _nb[40];  // buffer temporaire pour translittération des noms
+
     // ── Carte RESEAU ──────────────────────────────────────────────────────────
     {
         lv_obj_t *c = make_card(scr, MARGIN, MARGIN, grid_w, main_h, C_GRID);
-        make_label(c, g_cfg.grid_name[0] ? g_cfg.grid_name : "R\xc3\xa9seau",
-                   &lv_font_montserrat_14, C_GRID, LV_ALIGN_TOP_LEFT, 0, 0);
-        lbl_grid_status = make_label(c, "--", &lv_font_montserrat_12, C_MUTED,
+        make_label(c, ascii(g_cfg.grid_name[0] ? g_cfg.grid_name : "Reseau", _nb, sizeof(_nb)),
+                   &lv_font_montserrat_16, C_GRID, LV_ALIGN_TOP_LEFT, 0, 0);
+        lbl_grid_status = make_label(c, "--", &lv_font_montserrat_14, C_MUTED,
                                       LV_ALIGN_TOP_RIGHT, 0, 2);
         lbl_grid_power  = make_label(c, "--", &lv_font_montserrat_48, C_MUTED,
-                                      LV_ALIGN_TOP_LEFT, 0, 40);
-        lbl_grid_kwh    = make_label(c, "Auj : -- kWh", &lv_font_montserrat_16, C_MUTED,
-                                      LV_ALIGN_TOP_LEFT, 0, 110);
+                                      LV_ALIGN_TOP_LEFT, 0, 28);
+        lbl_grid_kwh    = make_label(c, "Auj : -- kWh", &lv_font_montserrat_20, C_MUTED,
+                                      LV_ALIGN_TOP_LEFT, 0, 96);
         make_label(c, "(+) import  /  (-) export",
-                   &lv_font_montserrat_12, C_MUTED, LV_ALIGN_TOP_LEFT, 0, 144);
+                   &lv_font_montserrat_14, C_MUTED, LV_ALIGN_TOP_LEFT, 0, 128);
 
         lv_obj_t *tag = lv_label_create(c);
         lv_label_set_text(tag, g_cfg.grid_host[0]
             ? grid_device_label(g_cfg.grid_device)
             : "Non configure — voir http://[IP]/");
-        lv_obj_set_style_text_font(tag, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_font(tag, &lv_font_montserrat_14, 0);
         lv_obj_set_style_text_color(tag, C_MUTED, 0);
         lv_obj_set_width(tag, grid_w - 24);
         lv_label_set_long_mode(tag, LV_LABEL_LONG_WRAP);
@@ -148,21 +210,21 @@ void ui_create() {
         // widgets solaires non créés
     } else {
         lv_obj_t *c = make_card(scr, MARGIN + CARD_W_2 + GAP, MARGIN, CARD_W_2, main_h, C_SOLAR);
-        make_label(c, g_cfg.solar_name[0] ? g_cfg.solar_name : "Solaire",
-                   &lv_font_montserrat_14, C_SOLAR, LV_ALIGN_TOP_LEFT, 0, 0);
-        lbl_solar_status = make_label(c, "--", &lv_font_montserrat_12, C_MUTED,
+        make_label(c, ascii(g_cfg.solar_name[0] ? g_cfg.solar_name : "Solaire", _nb, sizeof(_nb)),
+                   &lv_font_montserrat_16, C_SOLAR, LV_ALIGN_TOP_LEFT, 0, 0);
+        lbl_solar_status = make_label(c, "--", &lv_font_montserrat_14, C_MUTED,
                                        LV_ALIGN_TOP_RIGHT, 0, 2);
         lbl_solar_power  = make_label(c, "--", &lv_font_montserrat_48, C_MUTED,
-                                       LV_ALIGN_TOP_LEFT, 0, 40);
-        lbl_solar_kwh    = make_label(c, "Auj : -- kWh", &lv_font_montserrat_16, C_MUTED,
-                                       LV_ALIGN_TOP_LEFT, 0, 110);
+                                       LV_ALIGN_TOP_LEFT, 0, 28);
+        lbl_solar_kwh    = make_label(c, "Auj : -- kWh", &lv_font_montserrat_20, C_MUTED,
+                                       LV_ALIGN_TOP_LEFT, 0, 96);
 
         // Barre de production — visible dès que solaire configuré
         {
             int max_w = (g_cfg.solar_max_w > 0) ? g_cfg.solar_max_w : 1000;
             // % à droite de la ligne kWh
-            solar_bar_pct = make_label(c, "0%", &lv_font_montserrat_16, C_MUTED,
-                                        LV_ALIGN_TOP_RIGHT, 0, 110);
+            solar_bar_pct = make_label(c, "0%", &lv_font_montserrat_20, C_MUTED,
+                                        LV_ALIGN_TOP_RIGHT, 0, 96);
             // Barre horizontale
             solar_bar = lv_bar_create(c);
             lv_obj_set_size(solar_bar, CARD_W_2 - 24, 10);
@@ -175,23 +237,27 @@ void ui_create() {
             lv_obj_set_style_radius(solar_bar, 4, LV_PART_MAIN);
             lv_obj_set_style_radius(solar_bar, 4, LV_PART_INDICATOR);
             lv_obj_set_style_border_width(solar_bar, 0, LV_PART_MAIN);
-            lv_obj_align(solar_bar, LV_ALIGN_TOP_LEFT, 0, 134);
+            lv_obj_align(solar_bar, LV_ALIGN_TOP_LEFT, 0, 130);
         }
 
-        lbl_solar_dc     = make_label(c, "", &lv_font_montserrat_14, C_MUTED,
-                                       LV_ALIGN_TOP_LEFT, 0, 152);
-        lbl_solar_limit  = make_label(c, "", &lv_font_montserrat_14, C_MUTED,
+        lbl_solar_dc     = make_label(c, "", &lv_font_montserrat_16, C_MUTED,
+                                       LV_ALIGN_TOP_LEFT, 0, 148);
+        lbl_solar_limit  = make_label(c, "", &lv_font_montserrat_16, C_MUTED,
                                        LV_ALIGN_TOP_LEFT, 0, 172);
-        lbl_autoconso    = make_label(c, "", &lv_font_montserrat_14, C_GREEN,
-                                       LV_ALIGN_TOP_LEFT, 0, 204);
-        lbl_autosuff     = make_label(c, "", &lv_font_montserrat_14, C_GREEN,
-                                       LV_ALIGN_TOP_LEFT, 0, 226);
+        // Autoconso + Autonomie sur une seule ligne pour éviter la superposition avec le tag source
+        lbl_autoconso = lv_label_create(c);
+        lv_label_set_text(lbl_autoconso, "");
+        lv_obj_set_style_text_font(lbl_autoconso, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_color(lbl_autoconso, C_GREEN, 0);
+        lv_obj_set_width(lbl_autoconso, lv_pct(100));
+        lv_obj_align(lbl_autoconso, LV_ALIGN_TOP_LEFT, 0, 196);
+        lbl_autosuff = nullptr;  // fusionné dans lbl_autoconso
 
         lv_obj_t *tag = lv_label_create(c);
         lv_label_set_text(tag, g_cfg.solar_host[0]
             ? solar_device_label(g_cfg.solar_device)
             : "Non configure — voir http://[IP]/");
-        lv_obj_set_style_text_font(tag, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_font(tag, &lv_font_montserrat_14, 0);
         lv_obj_set_style_text_color(tag, C_MUTED, 0);
         lv_obj_set_width(tag, CARD_W_2 - 24);
         lv_label_set_long_mode(tag, LV_LABEL_LONG_WRAP);
@@ -204,35 +270,56 @@ void ui_create() {
         int dev_y = MARGIN + main_h + GAP;
         int dev_x = MARGIN;
 
+        // Helper : label centré sur toute la largeur de la carte (reste centré après setText)
+        auto clabel = [](lv_obj_t *p, const char *txt, const lv_font_t *font, lv_color_t col, int y) {
+            lv_obj_t *l = lv_label_create(p);
+            lv_label_set_text(l, txt);
+            lv_obj_set_style_text_font(l, font, 0);
+            lv_obj_set_style_text_color(l, col, 0);
+            lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
+            lv_obj_set_width(l, lv_pct(100));
+            lv_obj_align(l, LV_ALIGN_TOP_LEFT, 0, y);
+            return l;
+        };
+
+        // Police de puissance : font_48 si 1-2 appareils (cartes larges),
+        // font_32 si 3-4 appareils (cartes étroites ~190 px utiles)
+        const lv_font_t *pwr_font = (n_devs <= 2) ? &lv_font_montserrat_48
+                                                   : &lv_font_montserrat_32;
+        // Y des lignes secondaires (après le bloc puissance)
+        int sec_y   = (n_devs <= 2) ? 88  : 72;   // SOC / durée
+        int third_y = (n_devs <= 2) ? 112 : 96;   // kWh routeur
+
         // Cartes batteries
         for (int i = 0; i < MAX_BATTERIES; i++) {
             if (!bat_active[i]) continue;
-            const char *title = g_cfg.batteries[i].name[0] ? g_cfg.batteries[i].name : "Batterie";
+            const char *title = ascii(g_cfg.batteries[i].name[0] ? g_cfg.batteries[i].name : "Batterie", _nb, sizeof(_nb));
             lv_obj_t *c = make_card(scr, dev_x, dev_y, dev_w, DEV_H, C_SOLAR);
-            make_label(c, title, &lv_font_montserrat_12, C_SOLAR, LV_ALIGN_TOP_LEFT, 0, 0);
-            lbl_bat_power[i] = make_label(c, "--",    &lv_font_montserrat_14, C_MUTED, LV_ALIGN_TOP_LEFT, 0, 20);
-            lbl_bat_soc[i]   = make_label(c, "SOC --",&lv_font_montserrat_14, C_MUTED, LV_ALIGN_TOP_LEFT, 0, 42);
+            clabel(c, title, &lv_font_montserrat_14, C_SOLAR, 0);
+            lbl_bat_status[i] = make_label(c, "--", &lv_font_montserrat_12, C_MUTED, LV_ALIGN_TOP_RIGHT, 0, 2);
+            lbl_bat_power[i]  = clabel(c, "--",     pwr_font,               C_MUTED, 24);
+            lbl_bat_soc[i]    = clabel(c, "SOC --", &lv_font_montserrat_16, C_MUTED, sec_y);
             dev_x += dev_w + GAP;
         }
 
         // Cartes routeurs
         for (int i = 0; i < MAX_ROUTERS; i++) {
             if (!rtr_active[i]) continue;
-            const char *title = g_cfg.routers[i].name[0] ? g_cfg.routers[i].name : "Routeur";
-            // Pour F1ATB (slot 0 sans device dédié), le nom peut venir de routers[0].name
+            const char *title = ascii(g_cfg.routers[i].name[0] ? g_cfg.routers[i].name : "Routeur", _nb, sizeof(_nb));
             lv_obj_t *c = make_card(scr, dev_x, dev_y, dev_w, DEV_H, C_GREEN);
-            make_label(c, title, &lv_font_montserrat_12, C_GREEN, LV_ALIGN_TOP_LEFT, 0, 0);
-            lbl_rtr_power[i]    = make_label(c, "--", &lv_font_montserrat_14, C_MUTED, LV_ALIGN_TOP_LEFT, 0, 20);
-            lbl_rtr_duration[i] = make_label(c, "",   &lv_font_montserrat_12, C_MUTED, LV_ALIGN_TOP_LEFT, 0, 42);
-            lbl_rtr_kwh[i]      = make_label(c, "",   &lv_font_montserrat_12, C_MUTED, LV_ALIGN_TOP_LEFT, 0, 60);
+            clabel(c, title, &lv_font_montserrat_14, C_GREEN, 0);
+            lbl_rtr_status[i]   = make_label(c, "--", &lv_font_montserrat_12, C_MUTED, LV_ALIGN_TOP_RIGHT, 0, 2);
+            lbl_rtr_power[i]    = clabel(c, "--", pwr_font,               C_MUTED, 24);
+            lbl_rtr_duration[i] = clabel(c, "",   &lv_font_montserrat_14, C_MUTED, sec_y);
+            lbl_rtr_kwh[i]      = clabel(c, "",   &lv_font_montserrat_14, C_MUTED, third_y);
             dev_x += dev_w + GAP;
         }
     }
 
-    // ── Liseré indicateur (haut de l'écran, 6 px) ────────────────────────────
+    // ── Liseré indicateur (haut de l'écran, 12 px) ───────────────────────────
     ind_strip = lv_obj_create(scr);
     lv_obj_set_pos(ind_strip, 0, 0);
-    lv_obj_set_size(ind_strip, 800, 6);
+    lv_obj_set_size(ind_strip, 800, 12);
     lv_obj_set_style_bg_color(ind_strip, C_MUTED, 0);
     lv_obj_set_style_bg_opa(ind_strip, LV_OPA_COVER, 0);
     lv_obj_set_style_border_opa(ind_strip, LV_OPA_TRANSP, 0);
@@ -242,7 +329,7 @@ void ui_create() {
 
     // ── Barre IP en bas ────────────────────────────────────────────────────────
     lbl_ip_bar = lv_label_create(scr);
-    lv_obj_set_style_text_font(lbl_ip_bar, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(lbl_ip_bar, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(lbl_ip_bar, C_MUTED, 0);
     lv_label_set_text(lbl_ip_bar, "Config : http://... (connexion WiFi en cours)");
     lv_obj_align(lbl_ip_bar, LV_ALIGN_BOTTOM_MID, 0, -4);
@@ -305,28 +392,27 @@ void ui_update(const AppData &d) {
     }
 
     // ── Autoconsommation / Autosuffisance ─────────────────────────────────────
+    // solar.power_w peut être négatif (convention export) — on travaille en valeur absolue
     if (lbl_autoconso) {
-        if (d.solar.online && d.solar.power_w > 0) {
-            float self_consumed = d.solar.power_w + fminf(0.0f, d.grid.power_w);
+        float solar_prod = fabsf(d.solar.power_w);
+        if (d.solar.online && solar_prod > 0) {
+            float self_consumed = solar_prod + fminf(0.0f, d.grid.power_w);
             if (self_consumed < 0) self_consumed = 0;
-            float total_load = d.solar.power_w + d.grid.power_w;
-            float autoconso  = fminf(100.0f, self_consumed / d.solar.power_w * 100.0f);
+            float total_load = solar_prod + d.grid.power_w;
+            float autoconso  = fminf(100.0f, self_consumed / solar_prod * 100.0f);
             float autosuff   = total_load > 0 ? fminf(100.0f, self_consumed / total_load * 100.0f) : 100.0f;
-            snprintf(buf, sizeof(buf), "Autoconso  %.0f%%", autoconso);
+            snprintf(buf, sizeof(buf), "Autoconso %.0f%%   Autonomie %.0f%%", autoconso, autosuff);
             lv_label_set_text(lbl_autoconso, buf);
-            snprintf(buf, sizeof(buf), "Autosuff   %.0f%%", autosuff);
-            lv_label_set_text(lbl_autosuff, buf);
         } else {
             lv_label_set_text(lbl_autoconso, "");
-            lv_label_set_text(lbl_autosuff, "");
         }
     }
 
     // ── Barre de production solaire ───────────────────────────────────────────
+    // power_w peut être négatif (convention export) — prendre la valeur absolue
     if (solar_bar) {
         int max_w = (g_cfg.solar_max_w > 0) ? g_cfg.solar_max_w : 1000;
-        int val = (int)d.solar.power_w;
-        if (val < 0) val = 0;
+        int val = (int)fabsf(d.solar.power_w);
         if (val > max_w) val = max_w;
         lv_bar_set_range(solar_bar, 0, max_w);
         lv_bar_set_value(solar_bar, val, LV_ANIM_OFF);
@@ -341,6 +427,12 @@ void ui_update(const AppData &d) {
     for (int i = 0; i < MAX_BATTERIES; i++) {
         if (!lbl_bat_power[i]) continue;
         const auto &bat = d.batteries[i];
+        if (lbl_bat_status[i]) {
+            lv_label_set_text(lbl_bat_status[i],
+                bat.online ? LV_SYMBOL_OK : LV_SYMBOL_CLOSE);
+            lv_obj_set_style_text_color(lbl_bat_status[i],
+                bat.online ? C_GREEN : C_DANGER, 0);
+        }
         if (bat.online) {
             float pw = bat.power_w;
             fmt_power(buf, sizeof(buf), fabsf(pw));
@@ -365,6 +457,12 @@ void ui_update(const AppData &d) {
     for (int i = 0; i < MAX_ROUTERS; i++) {
         if (!lbl_rtr_power[i]) continue;
         const auto &rtr = d.routers[i];
+        if (lbl_rtr_status[i]) {
+            lv_label_set_text(lbl_rtr_status[i],
+                rtr.online ? LV_SYMBOL_OK : LV_SYMBOL_CLOSE);
+            lv_obj_set_style_text_color(lbl_rtr_status[i],
+                rtr.online ? C_GREEN : C_DANGER, 0);
+        }
         if (rtr.online) {
             if (rtr.power_w > 0)
                 fmt_power(buf, sizeof(buf), rtr.power_w);

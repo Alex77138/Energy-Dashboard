@@ -43,7 +43,7 @@ void webserver_log(const AppData &d) {
     RTPoint pt;
     pt.ts = (int32_t)time(nullptr);
     pt.gw = d.grid.power_w;
-    pt.sw = d.solar.power_w;
+    pt.sw = fabsf(d.solar.power_w);
     taskENTER_CRITICAL(&rt_mux);
     rt_ring[rt_head] = pt;
     rt_head = (rt_head + 1) % 90;
@@ -66,7 +66,7 @@ void webserver_log(const AppData &d) {
         }
         day_last_ts = now_ts;
         taskENTER_CRITICAL(&day_mux);
-        day_ring[day_head] = {now_ts, d.grid.power_w, d.solar.power_w};
+        day_ring[day_head] = {now_ts, d.grid.power_w, fabsf(d.solar.power_w)};
         day_head = (day_head + 1) % 288;
         if (day_count < 288) day_count++;
         taskEXIT_CRITICAL(&day_mux);
@@ -189,6 +189,8 @@ details[open]>summary{color:var(--text)}
 .host-row label{margin:0}
 .host-row select{height:36px;padding:0 8px;font-size:12px;color:var(--muted);white-space:nowrap}
 .sec-badge{font-size:10px;padding:1px 7px;border-radius:10px;background:var(--border);color:var(--muted);margin-left:auto}
+.sum-body{flex:1;min-width:0}
+.sum-desc{display:block;font-size:11px;font-weight:400;letter-spacing:.01em;color:var(--muted);margin-top:3px;text-transform:none}
 </style>
 </head>
 <body>
@@ -253,7 +255,7 @@ details[open]>summary{color:var(--text)}
   <!-- Graphique journalier -->
   <section>
     <h3>PUISSANCES DU JOUR (W)</h3>
-    <div style="position:relative;height:210px"><canvas id="ch-day"></canvas></div>
+    <div style="position:relative;height:320px"><canvas id="ch-day"></canvas></div>
     <div id="day-status" style="font-size:12px;color:var(--muted);margin-top:6px;text-align:right"></div>
   </section>
 </div>
@@ -265,7 +267,7 @@ details[open]>summary{color:var(--text)}
 </div>
 
 <!-- Mode demo -->
-<details open><summary>MODE DEMO</summary>
+<details><summary><div class="sum-body"><span>MODE DEMO</span><span class="sum-desc">Injecte des valeurs fictives — aucun appareil reel interroge</span></div></summary>
 <div class="acc-body">
 <div class="info-box">Injecte des valeurs fictives animees &mdash; aucun appareil reel n'est interroge. Utile pour presenter le tableau de bord sans connexion aux appareils.</div>
 <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
@@ -276,7 +278,7 @@ details[open]>summary{color:var(--text)}
 
 <!-- WiFi (formulaire independant) -->
 <form id="wifi-form" onsubmit="saveWifi(event)">
-<details id="sec-wifi"><summary>WIFI</summary>
+<details id="sec-wifi"><summary><div class="sum-body"><span>WIFI</span><span class="sum-desc">Connexion sans-fil et adresse IP</span></div></summary>
 <div class="acc-body">
 <div class="info-box" id="wifi-current">WiFi actuel : chargement...</div>
 <div class="row-scan">
@@ -311,7 +313,7 @@ details[open]>summary{color:var(--text)}
 <!-- Formulaire principal appareils -->
 <form id="cfg" onsubmit="saveCfg(event)">
 
-<details open><summary>GENERAL</summary>
+<details><summary><div class="sum-body"><span>GENERAL</span><span class="sum-desc">Nom du tableau de bord, orientation ecran, fuseau horaire</span></div></summary>
 <div class="acc-body">
 <div class="two">
   <label><span class="lbl">Nom du tableau de bord</span>
@@ -338,14 +340,16 @@ details[open]>summary{color:var(--text)}
 </label>
 </div></details>
 
-<details><summary>APPAREILS RESEAU <span class="sec-badge" id="host-badge">0</span></summary>
+<details><summary><div class="sum-body"><span>APPAREILS RESEAU</span><span class="sum-desc">Bibliotheque d'adresses IP — selectionnable dans chaque source</span></div><span class="sec-badge" id="host-badge">0</span></summary>
 <div class="acc-body">
-<div class="info-box">Definissez ici vos adresses IP une seule fois et selectionnez-les dans chaque source.</div>
 <div id="host-list"></div>
-<button type="button" class="btn btn-scan" id="host-add-btn" onclick="addHost()">+ Ajouter un appareil</button>
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+  <button type="button" class="btn btn-scan" id="host-add-btn" onclick="addHost()">+ Ajouter</button>
+  <button type="button" class="btn btn-save" onclick="saveHosts()">Enregistrer sans redemarrer</button>
+</div>
 </div></details>
 
-<details open><summary>RESEAU ELECTRIQUE &mdash; <span id="sec-grid-lbl" style="color:var(--accent)">--</span></summary>
+<details><summary><div class="sum-body"><span>RESEAU ELECTRIQUE &mdash; <span id="sec-grid-lbl" style="color:var(--accent)">--</span></span><span class="sum-desc">Source de mesure du courant electrique</span></div></summary>
 <div class="acc-body">
 <div class="two">
   <label><span class="lbl">Nom affiche</span>
@@ -390,7 +394,7 @@ details[open]>summary{color:var(--text)}
 </div>
 </div></details>
 
-<details open><summary>SOLAIRE &mdash; <span id="sec-solar-lbl" style="color:var(--orange)">--</span></summary>
+<details><summary><div class="sum-body"><span>SOLAIRE &mdash; <span id="sec-solar-lbl" style="color:var(--orange)">--</span></span><span class="sum-desc">Source de mesure de la production photovoltaique</span></div></summary>
 <div class="acc-body">
 <div class="two">
   <label><span class="lbl">Nom affiche</span>
@@ -451,20 +455,20 @@ details[open]>summary{color:var(--text)}
 </div>
 </div></details>
 
-<details><summary>BATTERIES <span class="sec-badge" id="bat-badge">0</span></summary>
+<details><summary><div class="sum-body"><span>BATTERIES</span><span class="sum-desc">Stockage d'energie — puissance et etat de charge</span></div><span class="sec-badge" id="bat-badge">0</span></summary>
 <div class="acc-body">
 <div id="bat-list"></div>
 <button type="button" class="btn btn-scan" id="bat-add-btn" onclick="addBat()">+ Ajouter une batterie</button>
 </div></details>
 
-<details><summary>ROUTEURS SOLAIRES <span class="sec-badge" id="rtr-badge">0</span></summary>
+<details><summary><div class="sum-body"><span>ROUTEURS SOLAIRES</span><span class="sum-desc">Derivation du surplus solaire vers une charge</span></div><span class="sec-badge" id="rtr-badge">0</span></summary>
 <div class="acc-body">
 <div id="rtr-list"></div>
 <button type="button" class="btn btn-scan" id="rtr-add-btn" onclick="addRtr()">+ Ajouter un routeur</button>
 </div></details>
 
 <div id="ha-section" style="display:none">
-<details open><summary>HOME ASSISTANT &mdash; TOKEN</summary>
+<details><summary><div class="sum-body"><span>HOME ASSISTANT &mdash; TOKEN</span><span class="sum-desc">Bearer token pour l'API REST HA (Profil → Securite → Jetons)</span></div></summary>
 <div class="acc-body">
 <div class="info-box">Token genere dans HA : Profil &rarr; Securite &rarr; Jetons d'acces longue duree.</div>
 <label><span class="lbl">Bearer Token</span>
@@ -481,12 +485,18 @@ details[open]>summary{color:var(--text)}
 
 <!-- MQTT -->
 <form id="mqtt-form" onsubmit="saveMqtt(event)">
-<details><summary>MQTT &amp; HOME ASSISTANT AUTO-DECOUVERTE</summary>
+<details><summary><div class="sum-body"><span>MQTT &amp; HOME ASSISTANT AUTO-DECOUVERTE</span><span class="sum-desc">Publication des donnees vers un broker MQTT + capteurs HA</span></div></summary>
 <div class="acc-body">
 <div class="info-box">Publie les donnees sur un broker MQTT. Active l'auto-decouverte HA pour voir les capteurs directement.</div>
-<div class="radio-row" style="margin-bottom:14px">
-  <label><input type="checkbox" name="mqtt_enabled" value="1"> Activer MQTT</label>
-  <label><input type="checkbox" name="mqtt_ha"> Auto-decouverte HA</label>
+<div style="display:flex;gap:24px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
+    <input type="checkbox" name="mqtt_enabled" style="width:16px;height:16px;margin:0;flex-shrink:0">
+    <span>Activer MQTT</span>
+  </label>
+  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
+    <input type="checkbox" name="mqtt_ha" style="width:16px;height:16px;margin:0;flex-shrink:0">
+    <span>Auto-decouverte HA</span>
+  </label>
 </div>
 <div class="two">
   <label><span class="lbl">Adresse du broker</span><input name="mqtt_host" placeholder="192.168.1.x"></label>
@@ -991,13 +1001,13 @@ function fetchDaily(){
       plugins:{legend:{labels:{color:'#e6edf3'}}},
       scales:{
         x:{ticks:{color:'#8b949e',maxTicksLimit:12},grid:{color:'#30363d'}},
-        y:{ticks:{color:'#8b949e'},grid:{color:'#30363d'},min:0}
+        y:{ticks:{color:'#8b949e'},grid:{color:'#30363d'}}
       }
     };
     if(chDay) chDay.destroy();
     chDay=new Chart(document.getElementById('ch-day'),{type:'line',data:{labels:labels,datasets:[
-      {label:'Consommation reseau (W)',data:gp,borderColor:'#58a6ff',backgroundColor:'rgba(88,166,255,.12)',fill:true,tension:.3,pointRadius:0,borderWidth:2},
-      {label:'Production solaire (W)',data:sp,borderColor:'#f4a429',backgroundColor:'rgba(244,164,41,.12)',fill:true,tension:.3,pointRadius:0,borderWidth:2}
+      {label:'Consommation reseau (W)',data:gp,borderColor:'#58a6ff',backgroundColor:'rgba(88,166,255,.15)',fill:true,tension:.3,pointRadius:0,borderWidth:2},
+      {label:'Production solaire (W)',data:sp,borderColor:'#f4a429',backgroundColor:'rgba(244,164,41,.25)',fill:true,tension:.3,pointRadius:0,borderWidth:2.5}
     ]},options:opts});
     st.textContent=pts.length+' points — '+fmtTs(pts[0].ts)+' → '+fmtTs(pts[pts.length-1].ts);
   }).catch(function(){});
@@ -1096,6 +1106,15 @@ function saveWifi(e){
     }).catch(function(){toast('Erreur reseau','err');});
 }
 
+function saveHosts(){
+  readHostState();
+  var hosts=hostState.filter(function(h){return h.name||h.ip;});
+  fetch('/api/hosts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hosts:hosts})})
+    .then(function(r){
+      if(r.ok){toast('Appareils reseau enregistres','ok');renderHostPickers();}
+      else toast('Erreur sauvegarde','err');
+    }).catch(function(){toast('Erreur reseau','err');});
+}
 function restart(){
   if(!confirm('Redemarrer le Dash Energy ?')) return;
   fetch('/api/restart',{method:'POST'}).then(function(){
@@ -1326,7 +1345,7 @@ static void handle_daily() {
         if (self > 0) self_kwh += self * dt_h / 1000.0;
     }
     int ac_pct  = (s_kwh  > 0.01) ? (int)min(100.0, self_kwh / s_kwh        * 100.0) : 0;
-    int as_pct  = (g_kwh + s_kwh > 0.01) ? (int)min(100.0, self_kwh / (g_kwh + s_kwh) * 100.0) : 0;
+    int as_pct  = (g_kwh + self_kwh > 0.01) ? (int)min(100.0, self_kwh / (g_kwh + self_kwh) * 100.0) : 0;
 
     // Sérialisation (max 300 pts decimés) — s_web_buf partagé (22 KB PSRAM)
     const size_t BUF_SZ = 22000;
@@ -1507,6 +1526,34 @@ static void handle_config_post() {
     ESP.restart();
 }
 
+static void handle_hosts_post() {
+    String body = server.arg("plain");
+    JsonDocument doc;
+    if (deserializeJson(doc, body)) {
+        server.send(400, "application/json", "{\"error\":\"json invalide\"}");
+        return;
+    }
+    if (doc["hosts"].is<JsonArray>()) {
+        JsonArrayConst hostsArr = doc["hosts"].as<JsonArrayConst>();
+        for (int i = 0; i < MAX_HOSTS; i++) g_cfg.hosts[i] = {};
+        int n = (int)hostsArr.size(); if (n > MAX_HOSTS) n = MAX_HOSTS;
+        for (int i = 0; i < n; i++) {
+            JsonObjectConst h = hostsArr[i];
+            strncpy(g_cfg.hosts[i].name, h["name"] | "", 31);
+            strncpy(g_cfg.hosts[i].ip,   h["ip"]   | "", 63);
+        }
+        // Sauvegarde uniquement les hotes en NVS — pas de redemarrage
+        Preferences p; p.begin("dev_cfg", false);
+        char k[14];
+        for (int i = 0; i < MAX_HOSTS; i++) {
+            snprintf(k, sizeof(k), "h%d_name", i); p.putString(k, g_cfg.hosts[i].name);
+            snprintf(k, sizeof(k), "h%d_ip",   i); p.putString(k, g_cfg.hosts[i].ip);
+        }
+        p.end();
+    }
+    server.send(200, "application/json", "{\"ok\":true}");
+}
+
 static void handle_wifi_config() {
     String body = server.arg("plain");
     JsonDocument doc;
@@ -1685,6 +1732,7 @@ static void web_task(void *) {
     server.on("/api/daily",         HTTP_GET,  handle_daily);
     server.on("/api/config",        HTTP_GET,  handle_config_get);
     server.on("/api/config",        HTTP_POST, handle_config_post);
+    server.on("/api/hosts",         HTTP_POST, handle_hosts_post);
     server.on("/api/wifi",          HTTP_POST, handle_wifi_config);
     server.on("/api/wifi/scan",     HTTP_POST, handle_wifi_scan_start);
     server.on("/api/wifi/networks", HTTP_GET,  handle_wifi_networks);

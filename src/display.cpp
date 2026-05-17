@@ -47,7 +47,8 @@ bool display_init(uint8_t rotation) {
     disp_drv.ver_res      = 480;
     disp_drv.flush_cb     = flush_cb;
     disp_drv.draw_buf     = &draw_buf;
-    disp_drv.full_refresh = 1;  // panel RGB DMA continu → évite race condition
+    // full_refresh=1 retiré : avec mises à jour partielles LVGL écrit moins de pixels
+    // → moins d'overlap avec le DMA continu → moins de sautes de couleur
     if (rotation == 2) {
         disp_drv.sw_rotate = 1;
         disp_drv.rotated   = LV_DISP_ROT_180;

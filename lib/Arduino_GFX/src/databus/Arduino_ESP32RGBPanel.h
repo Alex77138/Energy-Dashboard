@@ -83,6 +83,9 @@ public:
       uint16_t vsync_pulse_width = 10, uint16_t vsync_back_porch = 16, uint16_t vsync_front_porch = 4, uint16_t vsync_polarity = 1,
       uint16_t pclk_active_neg = 0, int32_t prefer_speed = GFX_NOT_DEFINED);
 
+  // Attend la fin du balayage DMA courant (front porch vertical)
+  void waitVSync();
+
 protected:
 private:
   INLINE void CS_HIGH(void);
@@ -103,6 +106,7 @@ private:
 
   esp_lcd_panel_handle_t _panel_handle = NULL;
   esp_rgb_panel_t *_rgb_panel;
+  SemaphoreHandle_t _vsync_sem = NULL;
 
   PORTreg_t _csPortSet;  ///< PORT register for chip select SET
   PORTreg_t _csPortClr;  ///< PORT register for chip select CLEAR
