@@ -17,21 +17,28 @@ static WebServer server(80);
 
 // ─── Buffer temps réel haute fréquence (90 pts × 4 s = ~6 min) ───────────────
 struct RTPoint { int32_t ts; float gw; float sw; };
-static RTPoint      rt_ring[90];
-static int          rt_head  = 0;
-static int          rt_count = 0;
-static portMUX_TYPE rt_mux   = portMUX_INITIALIZER_UNLOCKED;
+static RTPoint      *rt_ring  = nullptr;  // PSRAM — alloué dans webserver_start()
+static int           rt_head  = 0;
+static int           rt_count = 0;
+static portMUX_TYPE  rt_mux   = portMUX_INITIALIZER_UNLOCKED;
 
 // ─── Ring journalier (1 pt / 5 min → 288 pts max pour 24 h) ──────────────────
 struct DayPoint { int32_t ts; float gw; float sw; };
-static DayPoint      day_ring[288];
+static DayPoint     *day_ring   = nullptr;  // PSRAM — alloué dans webserver_start()
 static int           day_head    = 0;
 static int           day_count   = 0;
 static int32_t       day_last_ts = 0;
 static int           day_yday    = -1;
+
+// ─── Buffers PSRAM partagés (non concurrent — même tâche web) ────────────────
+static DayPoint *s_log_snap = nullptr;  // snapshot SD dans webserver_log (poll task)
+static DayPoint *s_rst_tmp  = nullptr;  // buffer restore ring (poll task, 1 fois)
+static DayPoint *s_day_snap = nullptr;  // snapshot handle_daily (web task)
+static char     *s_web_buf  = nullptr;  // 22 KB JSON commun aux handlers web
 static portMUX_TYPE  day_mux     = portMUX_INITIALIZER_UNLOCKED;
 
 void webserver_log(const AppData &d) {
+    if (!rt_ring || !day_ring) return;
     // Buffer haute fréquence
     RTPoint pt;
     pt.ts = (int32_t)time(nullptr);
@@ -65,27 +72,28 @@ void webserver_log(const AppData &d) {
         taskEXIT_CRITICAL(&day_mux);
 
         // Persistance sur SD : snapshot hors section critique
-        static DayPoint ring_snap[288];
-        int snap_yday, snap_count, snap_head;
-        int32_t snap_last_ts;
-        taskENTER_CRITICAL(&day_mux);
-        snap_yday    = day_yday;
-        snap_count   = day_count;
-        snap_head    = day_head;
-        snap_last_ts = day_last_ts;
-        memcpy(ring_snap, day_ring, sizeof(day_ring));
-        taskEXIT_CRITICAL(&day_mux);
-        sd_save_day_ring(snap_yday, snap_count, snap_head, snap_last_ts,
-                         ring_snap, sizeof(ring_snap));
+        if (s_log_snap) {
+            int snap_yday, snap_count, snap_head;
+            int32_t snap_last_ts;
+            taskENTER_CRITICAL(&day_mux);
+            snap_yday    = day_yday;
+            snap_count   = day_count;
+            snap_head    = day_head;
+            snap_last_ts = day_last_ts;
+            memcpy(s_log_snap, day_ring, sizeof(DayPoint) * 288);
+            taskEXIT_CRITICAL(&day_mux);
+            sd_save_day_ring(snap_yday, snap_count, snap_head, snap_last_ts,
+                             s_log_snap, sizeof(DayPoint) * 288);
+        }
     }
 }
 
 void webserver_restore_day_ring() {
+    if (!s_rst_tmp) return;
     int saved_yday, saved_count, saved_head;
     int32_t saved_last_ts;
-    static DayPoint tmp[288];
     if (!sd_load_day_ring(&saved_yday, &saved_count, &saved_head, &saved_last_ts,
-                           tmp, sizeof(tmp))) return;
+                           s_rst_tmp, sizeof(DayPoint) * 288)) return;
     struct tm ti;
     if (!getLocalTime(&ti, 0) || ti.tm_yday != saved_yday) return;
     taskENTER_CRITICAL(&day_mux);
@@ -93,7 +101,7 @@ void webserver_restore_day_ring() {
     day_count   = saved_count;
     day_head    = saved_head;
     day_last_ts = saved_last_ts;
-    memcpy(day_ring, tmp, sizeof(day_ring));
+    memcpy(day_ring, s_rst_tmp, sizeof(DayPoint) * 288);
     taskEXIT_CRITICAL(&day_mux);
     Serial.printf("[web] ring restaure: %d pts depuis la SD\n", saved_count);
 }
@@ -166,6 +174,21 @@ input[type=radio]{width:auto}
 .ap-banner{background:#1a2d4a;border:1px solid var(--accent);border-radius:7px;padding:10px 14px;font-size:13px;color:var(--accent);margin-bottom:16px;display:none}
 .toast{position:fixed;bottom:20px;right:20px;padding:11px 18px;border-radius:8px;font-size:14px;font-weight:600;opacity:0;transition:opacity .3s;pointer-events:none;z-index:99}
 .toast.ok{background:var(--green);color:#000;opacity:1}.toast.err{background:var(--red);color:#fff;opacity:1}
+.multi-item{border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px}
+.multi-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:13px;font-weight:700;color:var(--text)}
+.btn-del{padding:3px 10px;border-radius:5px;border:1px solid var(--red);background:none;color:var(--red);cursor:pointer;font-size:12px}
+details{border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden}
+details[open]{border-color:var(--accent)}
+summary{padding:11px 16px;cursor:pointer;font-size:11px;font-weight:700;letter-spacing:.09em;color:var(--muted);display:flex;align-items:center;gap:7px;user-select:none;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::before{content:'▸';font-size:11px;transition:transform .2s;flex-shrink:0}
+details[open]>summary::before{transform:rotate(90deg)}
+details[open]>summary{color:var(--text)}
+.acc-body{padding:0 16px 16px}
+.host-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:flex-end;margin-bottom:13px}
+.host-row label{margin:0}
+.host-row select{height:36px;padding:0 8px;font-size:12px;color:var(--muted);white-space:nowrap}
+.sec-badge{font-size:10px;padding:1px 7px;border-radius:10px;background:var(--border);color:var(--muted);margin-left:auto}
 </style>
 </head>
 <body>
@@ -175,6 +198,7 @@ input[type=radio]{width:auto}
     <span class="ver" id="hdr-ver"></span>
   </div>
   <div class="badges">
+    <span class="badge" id="demo-badge" style="display:none;background:#f4a429;color:#000;font-weight:700;border-color:#f4a429">DEMO</span>
     <span class="badge" id="hdr-ip">--</span>
     <span class="badge" id="hdr-rssi">WiFi --</span>
   </div>
@@ -191,14 +215,14 @@ input[type=radio]{width:auto}
 <div id="pane-status">
   <div class="cards">
     <div class="card">
-      <div class="card-hd grid">RESEAU</div>
+      <div class="card-hd grid" id="card-grid-name">RESEAU</div>
       <div class="status-row"><span class="dot" id="gd"></span><span id="gs">--</span></div>
       <div class="big" id="gp">--</div>
       <div class="sub" id="gk">--</div>
       <div class="tag" id="gt">--</div>
     </div>
     <div class="card">
-      <div class="card-hd solar">SOLAIRE</div>
+      <div class="card-hd solar" id="card-solar-name">SOLAIRE</div>
       <div class="status-row"><span class="dot" id="sd"></span><span id="ss">--</span></div>
       <div class="big" id="sp">--</div>
       <div class="sub" id="sk">--</div>
@@ -215,14 +239,8 @@ input[type=radio]{width:auto}
       </div>
       <div class="tag" id="st">--</div>
     </div>
-    <div id="bat-card" class="card" style="display:none">
-      <div class="card-hd" style="color:#3fb950">BATTERIE</div>
-      <div class="status-row"><span class="dot" id="bd"></span><span id="bs">--</span></div>
-      <div class="big" id="bp">--</div>
-      <div class="sub" id="bsoc">--</div>
-      <div class="tag" id="btt">--</div>
-    </div>
   </div>
+  <div class="cards" id="extra-cards"></div>
 
   <!-- Bilan journalier -->
   <div class="day-grid">
@@ -242,33 +260,38 @@ input[type=radio]{width:auto}
 
 <!-- ══ Configuration ════════════════════════════════════════════════════════ -->
 <div id="pane-config" style="display:none">
-
-<!-- Bandeau point d'accès -->
 <div class="ap-banner" id="ap-banner">
-  Point d'acces WiFi actif &mdash; <strong id="ap-banner-ip">192.168.4.1</strong> &mdash; SSID : DashEnergy-Config (sans mot de passe)
+  Point d'acces WiFi actif &mdash; <strong id="ap-banner-ip">192.168.4.1</strong> &mdash; SSID : DashEnergy-Config
 </div>
 
-<!-- ══ Formulaire WiFi ══════════════════════════════════════════════════════ -->
+<!-- Mode demo -->
+<details open><summary>MODE DEMO</summary>
+<div class="acc-body">
+<div class="info-box">Injecte des valeurs fictives animees &mdash; aucun appareil reel n'est interroge. Utile pour presenter le tableau de bord sans connexion aux appareils.</div>
+<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+  <button type="button" id="demo-btn" onclick="toggleDemo()" class="btn btn-scan" style="min-width:180px">Chargement...</button>
+  <span id="demo-st" style="font-size:13px;color:var(--muted)"></span>
+</div>
+</div></details>
+
+<!-- WiFi (formulaire independant) -->
 <form id="wifi-form" onsubmit="saveWifi(event)">
-<section>
-<h3>CONFIGURATION WIFI</h3>
+<details id="sec-wifi"><summary>WIFI</summary>
+<div class="acc-body">
 <div class="info-box" id="wifi-current">WiFi actuel : chargement...</div>
 <div class="row-scan">
   <button type="button" class="btn btn-scan" onclick="startScan()">Scanner les reseaux</button>
   <span id="scan-status" style="font-size:13px;color:var(--muted)"></span>
 </div>
-<label>
-  <span class="lbl">Reseau WiFi (SSID)</span>
+<label><span class="lbl">Reseau WiFi (SSID)</span>
   <input list="net-list" name="wifi_ssid" placeholder="Nom du reseau" autocomplete="off">
   <datalist id="net-list"></datalist>
 </label>
-<label>
-  <span class="lbl">Mot de passe WiFi</span>
+<label><span class="lbl">Mot de passe WiFi</span>
   <input name="wifi_pass" type="password" placeholder="Laisser vide pour ne pas changer">
 </label>
-<label><span class="lbl">Attribution de l'adresse IP</span></label>
 <div class="radio-row">
-  <label><input type="radio" name="wifi_dhcp" value="1" onchange="updWifi()"> DHCP (automatique)</label>
+  <label><input type="radio" name="wifi_dhcp" value="1" onchange="updWifi()"> DHCP</label>
   <label><input type="radio" name="wifi_dhcp" value="0" onchange="updWifi()"> IP fixe</label>
 </div>
 <div id="static-fields" style="display:none">
@@ -277,143 +300,30 @@ input[type=radio]{width:auto}
     <label><span class="lbl">Passerelle</span><input name="static_gw" placeholder="192.168.1.1"></label>
   </div>
   <div class="two">
-    <label><span class="lbl">Masque de sous-reseau</span><input name="static_nm" placeholder="255.255.255.0"></label>
-    <label><span class="lbl">Serveur DNS</span><input name="static_dns" placeholder="8.8.8.8"></label>
+    <label><span class="lbl">Masque sous-reseau</span><input name="static_nm" placeholder="255.255.255.0"></label>
+    <label><span class="lbl">DNS</span><input name="static_dns" placeholder="8.8.8.8"></label>
   </div>
 </div>
-<div class="actions">
-  <button type="submit" class="btn btn-save">Enregistrer WiFi et redemarrer</button>
-</div>
-</section>
+<div class="actions"><button type="submit" class="btn btn-save">Enregistrer WiFi et redemarrer</button></div>
+</div></details>
 </form>
 
-<!-- ══ Formulaire appareils ════════════════════════════════════════════════ -->
+<!-- Formulaire principal appareils -->
 <form id="cfg" onsubmit="saveCfg(event)">
-<section>
-<h3>TABLEAU DE BORD</h3>
-<label><span class="lbl">Nom de l'appareil</span>
-  <input name="device_name" maxlength="31" placeholder="Dash Energy">
-</label>
-</section>
-<section>
-<h3>SOURCE RESEAU</h3>
-<label><span class="lbl">Type d'appareil</span>
-  <select name="grid_device" onchange="updGrid()">
-    <option value="0">-- Non configure --</option>
-    <optgroup label="Shelly Gen1">
-      <option value="1">Shelly EM Gen1 &mdash; 1 sonde</option>
-      <option value="2">Shelly EM Gen1 &mdash; 2 sondes</option>
-      <option value="3">Shelly 3EM &mdash; 1 phase</option>
-      <option value="4">Shelly 3EM &mdash; 2 phases</option>
-      <option value="5">Shelly 3EM &mdash; 3 phases</option>
-    </optgroup>
-    <optgroup label="Shelly Gen2 / Gen3">
-      <option value="6">Shelly Pro EM (2 canaux)</option>
-      <option value="7">Shelly Pro 3EM (3 canaux)</option>
-    </optgroup>
-    <optgroup label="Routeur solaire">
-      <option value="8">Routeur F1ATB</option>
-    </optgroup>
-    <optgroup label="Domotique">
-      <option value="9">Home Assistant (entite)</option>
-    </optgroup>
-  </select>
-</label>
-<div id="grid-ip-wrap">
-<label><span class="lbl">Adresse IP / Hote</span>
-  <input name="grid_host" placeholder="192.168.1.x">
-</label>
-</div>
-<div id="grid-ha-fields" style="display:none">
-  <label><span class="lbl">Entite puissance reseau (entity_id)</span>
-    <input name="grid_entity" placeholder="sensor.linky_power" maxlength="63">
+
+<details open><summary>GENERAL</summary>
+<div class="acc-body">
+<div class="two">
+  <label><span class="lbl">Nom du tableau de bord</span>
+    <input name="device_name" maxlength="31" placeholder="Dash Energy">
+  </label>
+  <label><span class="lbl">Orientation ecran</span>
+    <select name="display_rotation">
+      <option value="0">Normal (0 deg)</option>
+      <option value="2">Retourne (180 deg)</option>
+    </select>
   </label>
 </div>
-</section>
-<section>
-<h3>SOURCE SOLAIRE</h3>
-<label><span class="lbl">Type d'appareil</span>
-  <select name="solar_device" onchange="updSolar()">
-    <option value="0">-- Non configure --</option>
-    <optgroup label="Passerelle DTU (Hoymiles)">
-      <option value="1">OpenDTU</option>
-      <option value="2">AhoyDTU</option>
-    </optgroup>
-    <optgroup label="Shelly Gen1">
-      <option value="3">Shelly Plug Gen1</option>
-      <option value="5">Shelly EM Gen1 &mdash; 1 sonde</option>
-      <option value="6">Shelly EM Gen1 &mdash; 2 sondes</option>
-      <option value="7">Shelly 3EM &mdash; 1 phase</option>
-      <option value="8">Shelly 3EM &mdash; 2 phases</option>
-      <option value="9">Shelly 3EM &mdash; 3 phases</option>
-    </optgroup>
-    <optgroup label="Shelly Gen2 / Gen3">
-      <option value="4">Shelly Plug S / Plus 1PM Gen2/3</option>
-    </optgroup>
-    <optgroup label="Onduleur direct">
-      <option value="11">Fronius Symo / Primo / Galvo</option>
-    </optgroup>
-    <optgroup label="Domotique">
-      <option value="10">Home Assistant (entite)</option>
-    </optgroup>
-  </select>
-</label>
-<label><span class="lbl">Adresse IP / Hote</span>
-  <input name="solar_host" placeholder="192.168.1.x">
-</label>
-<div id="solar-ha-fields" style="display:none">
-  <label><span class="lbl">Entite puissance solaire (entity_id)</span>
-    <input name="solar_entity" placeholder="sensor.solaredge_power" maxlength="63">
-  </label>
-</div>
-<div id="dtu-fields" style="display:none">
-  <div id="dtu-auth" class="two">
-    <label><span class="lbl">Utilisateur OpenDTU</span><input name="solar_user" placeholder="admin"></label>
-    <label><span class="lbl">Mot de passe OpenDTU</span><input name="solar_pass" type="password"></label>
-  </div>
-  <label><span class="lbl" id="dtu-serial-lbl">Numero de serie onduleur</span>
-    <input name="solar_serial" id="dtu-serial-inp" placeholder="114181234567" maxlength="63">
-  </label>
-</div>
-</section>
-<label><span class="lbl">Puissance crete solaire (Wc) &mdash; active la jauge ecran</span>
-  <input name="solar_max_w" type="number" min="0" max="99999" placeholder="0 = jauge desactivee">
-</label>
-</section>
-<section>
-<h3>BATTERIE (OPTIONNEL)</h3>
-<label><span class="lbl">Type de batterie</span>
-  <select name="battery_device" onchange="updBattery()">
-    <option value="0">-- Non configure --</option>
-    <optgroup label="Passerelle ESPHome">
-      <option value="1">JK-BMS via syssi/esphome-jk-bms</option>
-    </optgroup>
-  </select>
-</label>
-<div id="bat-ip-wrap" style="display:none">
-<label><span class="lbl">Adresse IP du bridge ESPHome</span>
-  <input name="battery_host" placeholder="192.168.1.x">
-</label>
-<div class="info-box">
-  Necessite un ESP32 bridge avec ESPHome + <a href="https://github.com/syssi/esphome-jk-bms" target="_blank" rel="noopener" style="color:var(--accent)">syssi/esphome-jk-bms</a>.<br>
-  L'ESP bridge se connecte au BMS en Bluetooth et expose les donnees en HTTP sur le reseau local.
-</div>
-</div>
-</section>
-<div id="ha-section" style="display:none">
-<section>
-<h3>HOME ASSISTANT</h3>
-<div class="info-box">
-  Token Long-Lived Access Token genere dans HA : Profil &rarr; Securite &rarr; Jetons d'acces longue duree.<br>
-  L'adresse IP/hote est celle configuree pour chaque source (ex: 192.168.1.10:8123).
-</div>
-<label><span class="lbl">Jeton d'acces HA (Bearer Token)</span>
-  <input name="ha_token" type="password" maxlength="191" placeholder="eyJhbGc...">
-</label>
-</section>
-</div>
-<section>
-<h3>AFFICHAGE</h3>
 <label><span class="lbl">Fuseau horaire</span>
   <select name="timezone">
     <option value="CET-1CEST,M3.5.0,M10.5.0/3">France / Belgique / Espagne (CET/CEST)</option>
@@ -426,63 +336,190 @@ input[type=radio]{width:auto}
     <option value="PST8PDT,M3.2.0,M11.1.0">USA Ouest (PST/PDT)</option>
   </select>
 </label>
-<label><span class="lbl">Orientation ecran</span>
-  <select name="display_rotation">
-    <option value="0">Normal (0deg)</option>
-    <option value="2">Retourne (180deg)</option>
+</div></details>
+
+<details><summary>APPAREILS RESEAU <span class="sec-badge" id="host-badge">0</span></summary>
+<div class="acc-body">
+<div class="info-box">Definissez ici vos adresses IP une seule fois et selectionnez-les dans chaque source.</div>
+<div id="host-list"></div>
+<button type="button" class="btn btn-scan" id="host-add-btn" onclick="addHost()">+ Ajouter un appareil</button>
+</div></details>
+
+<details open><summary>RESEAU ELECTRIQUE &mdash; <span id="sec-grid-lbl" style="color:var(--accent)">--</span></summary>
+<div class="acc-body">
+<div class="two">
+  <label><span class="lbl">Nom affiche</span>
+    <input name="grid_name" id="grid-name-inp" maxlength="31" placeholder="Reseau" oninput="updSecLabels()">
+  </label>
+  <label><span class="lbl">Source</span>
+    <select name="grid_device" onchange="updGrid()">
+      <option value="0">-- Non configure --</option>
+      <optgroup label="Shelly Gen1">
+        <option value="1">Shelly EM Gen1 &mdash; 1 sonde</option>
+        <option value="2">Shelly EM Gen1 &mdash; 2 sondes</option>
+        <option value="3">Shelly 3EM &mdash; 1 phase</option>
+        <option value="4">Shelly 3EM &mdash; 2 phases</option>
+        <option value="5">Shelly 3EM &mdash; 3 phases</option>
+      </optgroup>
+      <optgroup label="Shelly Gen2/Gen3">
+        <option value="6">Shelly Pro EM (2 canaux)</option>
+        <option value="7">Shelly Pro 3EM (3 canaux)</option>
+      </optgroup>
+      <optgroup label="Routeur solaire">
+        <option value="8">Routeur F1ATB</option>
+      </optgroup>
+      <optgroup label="Domotique">
+        <option value="9">Home Assistant (entite)</option>
+      </optgroup>
+    </select>
+  </label>
+</div>
+<div id="grid-ip-wrap" class="host-row">
+  <label><span class="lbl">Adresse IP / Hote</span>
+    <input name="grid_host" id="grid-host-inp" placeholder="192.168.1.x">
+  </label>
+  <select class="host-picker" onchange="applyHostPick(this,'grid-host-inp')"></select>
+</div>
+<div id="grid-ha-fields" style="display:none">
+  <label><span class="lbl">Entite puissance reseau (W)</span>
+    <input name="grid_entity" placeholder="sensor.linky_power" maxlength="63">
+  </label>
+  <label><span class="lbl">Entite energie reseau aujourd'hui (kWh) &mdash; optionnel</span>
+    <input name="grid_energy_entity" placeholder="sensor.linky_energy_today" maxlength="63">
+  </label>
+</div>
+</div></details>
+
+<details open><summary>SOLAIRE &mdash; <span id="sec-solar-lbl" style="color:var(--orange)">--</span></summary>
+<div class="acc-body">
+<div class="two">
+  <label><span class="lbl">Nom affiche</span>
+    <input name="solar_name" id="solar-name-inp" maxlength="31" placeholder="Solaire" oninput="updSecLabels()">
+  </label>
+  <label><span class="lbl">Puissance crete (Wc) &mdash; jauge ecran</span>
+    <input name="solar_max_w" type="number" min="0" max="99999" placeholder="0 = desactivee">
+  </label>
+</div>
+<label><span class="lbl">Source</span>
+  <select name="solar_device" onchange="updSolar()">
+    <option value="0">-- Non configure --</option>
+    <optgroup label="DTU Hoymiles">
+      <option value="1">OpenDTU</option>
+      <option value="2">AhoyDTU</option>
+    </optgroup>
+    <optgroup label="Shelly Gen1">
+      <option value="3">Shelly Plug Gen1</option>
+      <option value="5">Shelly EM Gen1 &mdash; 1 sonde</option>
+      <option value="6">Shelly EM Gen1 &mdash; 2 sondes</option>
+      <option value="7">Shelly 3EM &mdash; 1 phase</option>
+      <option value="8">Shelly 3EM &mdash; 2 phases</option>
+      <option value="9">Shelly 3EM &mdash; 3 phases</option>
+    </optgroup>
+    <optgroup label="Shelly Gen2/Gen3">
+      <option value="4">Shelly Plug S / Plus 1PM Gen2/3</option>
+    </optgroup>
+    <optgroup label="Onduleur">
+      <option value="11">Fronius Symo / Primo / Galvo</option>
+    </optgroup>
+    <optgroup label="Domotique">
+      <option value="10">Home Assistant (entite)</option>
+    </optgroup>
   </select>
 </label>
-<div class="actions">
+<div class="host-row">
+  <label><span class="lbl">Adresse IP / Hote</span>
+    <input name="solar_host" id="solar-host-inp" placeholder="192.168.1.x">
+  </label>
+  <select class="host-picker" onchange="applyHostPick(this,'solar-host-inp')"></select>
+</div>
+<div id="solar-ha-fields" style="display:none">
+  <label><span class="lbl">Entite puissance solaire (W)</span>
+    <input name="solar_entity" placeholder="sensor.solaredge_power" maxlength="63">
+  </label>
+  <label><span class="lbl">Entite energie solaire aujourd'hui (kWh) &mdash; optionnel</span>
+    <input name="solar_energy_entity" placeholder="sensor.solaredge_energy_today" maxlength="63">
+  </label>
+</div>
+<div id="dtu-fields" style="display:none">
+  <div id="dtu-auth" class="two">
+    <label><span class="lbl">Utilisateur OpenDTU</span><input name="solar_user" placeholder="admin"></label>
+    <label><span class="lbl">Mot de passe OpenDTU</span><input name="solar_pass" type="password"></label>
+  </div>
+  <label><span class="lbl" id="dtu-serial-lbl">Numero de serie onduleur</span>
+    <input name="solar_serial" id="dtu-serial-inp" placeholder="114181234567" maxlength="63">
+  </label>
+</div>
+</div></details>
+
+<details><summary>BATTERIES <span class="sec-badge" id="bat-badge">0</span></summary>
+<div class="acc-body">
+<div id="bat-list"></div>
+<button type="button" class="btn btn-scan" id="bat-add-btn" onclick="addBat()">+ Ajouter une batterie</button>
+</div></details>
+
+<details><summary>ROUTEURS SOLAIRES <span class="sec-badge" id="rtr-badge">0</span></summary>
+<div class="acc-body">
+<div id="rtr-list"></div>
+<button type="button" class="btn btn-scan" id="rtr-add-btn" onclick="addRtr()">+ Ajouter un routeur</button>
+</div></details>
+
+<div id="ha-section" style="display:none">
+<details open><summary>HOME ASSISTANT &mdash; TOKEN</summary>
+<div class="acc-body">
+<div class="info-box">Token genere dans HA : Profil &rarr; Securite &rarr; Jetons d'acces longue duree.</div>
+<label><span class="lbl">Bearer Token</span>
+  <input name="ha_token" type="password" maxlength="191" placeholder="eyJhbGc...">
+</label>
+</div></details>
+</div>
+
+<div class="actions" style="padding:4px 0 8px">
   <button type="submit" class="btn btn-save">Enregistrer et redemarrer</button>
   <button type="button" class="btn btn-restart" onclick="restart()">Redemarrer</button>
 </div>
 </form>
 
-<!-- ══ Formulaire MQTT ══════════════════════════════════════════════════════ -->
+<!-- MQTT -->
 <form id="mqtt-form" onsubmit="saveMqtt(event)">
-<section>
-<h3>MQTT &amp; HOME ASSISTANT</h3>
-<div class="info-box">
-  Les donnees sont publiees sur le broker MQTT apres chaque collecte.<br>
-  Activez <strong>Auto-decouverte HA</strong> pour que les capteurs apparaissent automatiquement dans Home Assistant.
-</div>
+<details><summary>MQTT &amp; HOME ASSISTANT AUTO-DECOUVERTE</summary>
+<div class="acc-body">
+<div class="info-box">Publie les donnees sur un broker MQTT. Active l'auto-decouverte HA pour voir les capteurs directement.</div>
 <div class="radio-row" style="margin-bottom:14px">
   <label><input type="checkbox" name="mqtt_enabled" value="1"> Activer MQTT</label>
-  <label><input type="checkbox" name="mqtt_ha"> Auto-decouverte Home Assistant</label>
+  <label><input type="checkbox" name="mqtt_ha"> Auto-decouverte HA</label>
 </div>
 <div class="two">
   <label><span class="lbl">Adresse du broker</span><input name="mqtt_host" placeholder="192.168.1.x"></label>
   <label><span class="lbl">Port</span><input name="mqtt_port" type="number" min="1" max="65535" placeholder="1883"></label>
 </div>
 <div class="two">
-  <label><span class="lbl">Utilisateur (optionnel)</span><input name="mqtt_user" placeholder="homeassistant"></label>
+  <label><span class="lbl">Utilisateur</span><input name="mqtt_user" placeholder="homeassistant"></label>
   <label><span class="lbl">Mot de passe</span><input name="mqtt_pass" type="password"></label>
 </div>
 <label><span class="lbl">Topic de base</span>
   <input name="mqtt_topic" placeholder="dashenergy" maxlength="31">
 </label>
-<div class="actions">
-  <button type="submit" class="btn btn-save">Enregistrer MQTT et redemarrer</button>
-</div>
-</section>
+<div class="actions"><button type="submit" class="btn btn-save">Enregistrer MQTT et redemarrer</button></div>
+</div></details>
 </form>
 
-<!-- ══ Systeme ════════════════════════════════════════════════════════════════ -->
-<section id="sys-section">
-<h3>SYSTEME</h3>
+<!-- Systeme -->
+<details open><summary>SYSTEME</summary>
+<div class="acc-body">
 <div class="sys">
   <div class="si"><div class="si-lbl">Adresse IP</div><div class="si-val" id="i-ip">--</div></div>
   <div class="si"><div class="si-lbl">Reseau WiFi</div><div class="si-val" id="i-ssid">--</div></div>
   <div class="si"><div class="si-lbl">Signal WiFi</div><div class="si-val" id="i-rssi">--</div></div>
   <div class="si"><div class="si-lbl">Uptime</div><div class="si-val" id="i-up">--</div></div>
-  <div class="si"><div class="si-lbl">Memoire utilisee</div><div class="si-val" id="i-heap">--</div></div>
-  <div class="si"><div class="si-lbl">PSRAM utilisee</div><div class="si-val" id="i-psram">--</div></div>
+  <div class="si"><div class="si-lbl">RAM interne</div><div class="si-val" id="i-heap">--</div></div>
+  <div class="si"><div class="si-lbl">PSRAM</div><div class="si-val" id="i-psram">--</div></div>
+  <div class="si"><div class="si-lbl">Carte SD</div><div class="si-val" id="i-sd">--</div></div>
   <div class="si"><div class="si-lbl">CPU</div><div class="si-val" id="i-cpu">--</div></div>
   <div class="si"><div class="si-lbl">Firmware</div><div class="si-val" id="i-build">--</div></div>
   <div class="si"><div class="si-lbl">Heure NTP</div><div class="si-val" id="i-time">--</div></div>
   <div class="si" id="si-ap" style="display:none"><div class="si-lbl">Point d'acces</div><div class="si-val" id="i-ap">--</div></div>
 </div>
-</section>
+</div></details>
 
 </div><!-- pane-config -->
 
@@ -553,16 +590,171 @@ function updGrid(){
   document.getElementById('grid-ha-fields').style.display=isHa?'':'none';
   updHaSection();
 }
+/* ── Multi-items : batteries / routeurs / hotes ── */
+var batState=[], rtrState=[], hostState=[];
+
+function hpOpts(){
+  var s='<option value="">-- Choisir --</option>';
+  hostState.forEach(function(h){if(h.name||h.ip)s+='<option value="'+esc(h.ip)+'">'+esc(h.name||h.ip)+'</option>';});
+  return s;
+}
+function rebuildPickers(){
+  var o=hpOpts();
+  document.querySelectorAll('.host-picker').forEach(function(s){s.innerHTML=o;});
+}
+function applyHostPick(sel,fid){
+  var ip=sel.value;
+  if(ip){var el=document.getElementById(fid);if(el)el.value=ip;}
+  sel.value='';
+}
+function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+
 function updHaSection(){
   var gv=parseInt(document.querySelector('[name=grid_device]').value);
   var sv=parseInt(document.querySelector('[name=solar_device]').value);
   var needHa=(gv===9||sv===10);
+  if(!needHa)(batState||[]).forEach(function(b){if(b.device==2)needHa=true;});
+  if(!needHa)(rtrState||[]).forEach(function(r){if(r.device==1)needHa=true;});
   document.getElementById('ha-section').style.display=needHa?'':'none';
 }
-function updBattery(){
-  var v=parseInt(document.querySelector('[name=battery_device]').value);
-  document.getElementById('bat-ip-wrap').style.display=v>0?'':'none';
+
+function updSecLabels(){
+  var gn=document.getElementById('grid-name-inp');
+  var sn=document.getElementById('solar-name-inp');
+  if(gn)document.getElementById('sec-grid-lbl').textContent=gn.value||'Reseau';
+  if(sn)document.getElementById('sec-solar-lbl').textContent=sn.value||'Solaire';
 }
+
+/* ── Hotes ── */
+function hostHtml(h,i){
+  return '<div class="multi-item" id="host-item-'+i+'">'
+    +'<div class="multi-hd"><span>'+(h.name||('Appareil '+(i+1)))+'</span>'
+    +'<button type="button" class="btn-del" onclick="removeHost('+i+')">Supprimer</button></div>'
+    +'<div class="two">'
+    +'<label><span class="lbl">Nom</span><input id="hname-'+i+'" value="'+esc(h.name||'')+'" placeholder="Home Assistant" maxlength="31" oninput="liveHostName('+i+')"></label>'
+    +'<label><span class="lbl">Adresse IP / Hote:port</span><input id="hip-'+i+'" value="'+esc(h.ip||'')+'" placeholder="192.168.1.x:8123" maxlength="63"></label>'
+    +'</div></div>';
+}
+function liveHostName(i){
+  var v=(document.getElementById('hname-'+i)||{}).value||'Appareil '+(i+1);
+  var hd=document.querySelector('#host-item-'+i+' .multi-hd span');
+  if(hd)hd.textContent=v;
+  readHostState();rebuildPickers();
+}
+function renderHostList(){
+  var h='';hostState.forEach(function(x,i){h+=hostHtml(x,i);});
+  document.getElementById('host-list').innerHTML=h;
+  var n=hostState.length;
+  document.getElementById('host-add-btn').style.display=n>=8?'none':'';
+  document.getElementById('host-badge').textContent=n;
+  rebuildPickers();
+}
+function addHost(){if(hostState.length>=8)return;hostState.push({name:'',ip:''});renderHostList();}
+function removeHost(i){hostState.splice(i,1);renderHostList();}
+function readHostState(){hostState.forEach(function(h,i){h.name=(document.getElementById('hname-'+i)||{}).value||'';h.ip=(document.getElementById('hip-'+i)||{}).value||'';});}
+
+/* ── Batteries ── */
+function batHtml(b,i){
+  var sel='<select onchange="updBatItem('+i+')">';
+  [{v:0,l:'-- Non configure --'},{v:1,l:'JK-BMS via ESPHome'},{v:2,l:'Home Assistant'}].forEach(function(o){sel+='<option value="'+o.v+'"'+(b.device==o.v?' selected':'')+'>'+o.l+'</option>';});
+  sel+='</select>';
+  var bname=b.name||(i>0?'Batterie '+(i+1):'');
+  return '<div class="multi-item" id="bat-item-'+i+'">'
+    +'<div class="multi-hd"><span id="bname-hd-'+i+'">'+(b.name||('Batterie '+(i+1)))+'</span>'
+    +'<button type="button" class="btn-del" onclick="removeBat('+i+')">Supprimer</button></div>'
+    +'<div class="two"><label><span class="lbl">Nom affiche</span>'
+    +'<input id="bname-'+i+'" value="'+esc(bname)+'" placeholder="Batterie '+(i+1)+'" maxlength="31" oninput="liveBatName('+i+')">'
+    +'</label><label><span class="lbl">Source</span>'+sel+'</label></div>'
+    +'<div id="bh-'+i+'" style="display:'+(b.device>0?'':'none')+'">'
+    +'<div class="host-row"><label><span class="lbl" id="bhl-'+i+'">'+(b.device==1?'Adresse IP ESPHome':'Adresse Home Assistant (host:port)')+'</span>'
+    +'<input id="bhost-'+i+'" value="'+esc(b.host||'')+'" placeholder="'+(b.device==1?'192.168.1.x':'192.168.1.x:8123')+'"></label>'
+    +'<select class="host-picker" onchange="applyHostPick(this,\'bhost-'+i+'\')">'+hpOpts()+'</select></div></div>'
+    +'<div id="bha-'+i+'" style="display:'+(b.device==2?'':'none')+'">'
+    +'<label><span class="lbl">Entite puissance (W)</span><input id="bpwr-'+i+'" value="'+esc(b.power_entity||'')+'" placeholder="sensor.battery_power" maxlength="63"></label>'
+    +'<label><span class="lbl">Entite SoC (%)</span><input id="bsoc-'+i+'" value="'+esc(b.soc_entity||'')+'" placeholder="sensor.battery_soc" maxlength="63"></label>'
+    +'</div></div>';
+}
+function liveBatName(i){
+  var v=(document.getElementById('bname-'+i)||{}).value||'Batterie '+(i+1);
+  var hd=document.getElementById('bname-hd-'+i);if(hd)hd.textContent=v;
+}
+function renderBatList(){
+  var h='';batState.forEach(function(b,i){h+=batHtml(b,i);});
+  document.getElementById('bat-list').innerHTML=h;
+  document.getElementById('bat-add-btn').style.display=batState.length>=4?'none':'';
+  document.getElementById('bat-badge').textContent=batState.length;
+  updHaSection();
+}
+function updBatItem(i){
+  var v=parseInt(document.querySelector('#bat-item-'+i+' select').value);
+  batState[i].device=v;
+  document.getElementById('bh-'+i).style.display=v>0?'':'none';
+  document.getElementById('bha-'+i).style.display=v==2?'':'none';
+  var lbl=document.getElementById('bhl-'+i);
+  if(lbl)lbl.textContent=v==1?'Adresse IP ESPHome':'Adresse Home Assistant (host:port)';
+  updHaSection();
+}
+function addBat(){if(batState.length>=4)return;batState.push({device:0,name:'',host:'',power_entity:'',soc_entity:''});renderBatList();}
+function removeBat(i){batState.splice(i,1);renderBatList();}
+function readBatState(){batState.forEach(function(b,i){
+  b.name=(document.getElementById('bname-'+i)||{}).value||'';
+  b.device=parseInt((document.querySelector('#bat-item-'+i+' select')||{}).value)||0;
+  b.host=(document.getElementById('bhost-'+i)||{}).value||'';
+  b.power_entity=(document.getElementById('bpwr-'+i)||{}).value||'';
+  b.soc_entity=(document.getElementById('bsoc-'+i)||{}).value||'';
+});}
+
+/* ── Routeurs ── */
+function rtrHtml(r,i){
+  var sel='<select onchange="updRtrItem('+i+')">';
+  [{v:0,l:'-- Non configure --'},{v:1,l:'Home Assistant'}].forEach(function(o){sel+='<option value="'+o.v+'"'+(r.device==o.v?' selected':'')+'>'+o.l+'</option>';});
+  sel+='</select>';
+  return '<div class="multi-item" id="rtr-item-'+i+'">'
+    +'<div class="multi-hd"><span id="rname-hd-'+i+'">'+(r.name||('Routeur '+(i+1)))+'</span>'
+    +'<button type="button" class="btn-del" onclick="removeRtr('+i+')">Supprimer</button></div>'
+    +'<div class="two"><label><span class="lbl">Nom affiche</span>'
+    +'<input id="rname-'+i+'" value="'+esc(r.name||'')+'" placeholder="Routeur '+(i+1)+'" maxlength="31" oninput="liveRtrName('+i+')">'
+    +'</label><label><span class="lbl">Source</span>'+sel+'</label></div>'
+    +'<div id="rha-'+i+'" style="display:'+(r.device==1?'':'none')+'">'
+    +'<div class="host-row"><label><span class="lbl">Adresse Home Assistant (host:port)</span>'
+    +'<input id="rhost-'+i+'" value="'+esc(r.host||'')+'" placeholder="192.168.1.x:8123"></label>'
+    +'<select class="host-picker" onchange="applyHostPick(this,\'rhost-'+i+'\')">'+hpOpts()+'</select></div>'
+    +'<label><span class="lbl">Entite puissance routee (W)</span><input id="rpwr-'+i+'" value="'+esc(r.power_entity||'')+'" placeholder="sensor.f1atb_power" maxlength="63"></label>'
+    +'<label><span class="lbl">Entite energie aujourd\'hui (kWh) &mdash; optionnel</span><input id="ren-'+i+'" value="'+esc(r.energy_entity||'')+'" placeholder="sensor.f1atb_energy_today" maxlength="63"></label>'
+    +'<label><span class="lbl">Entite actif/inactif (binary_sensor) &mdash; optionnel</span><input id="ract-'+i+'" value="'+esc(r.active_entity||'')+'" placeholder="binary_sensor.f1atb_active" maxlength="63"></label>'
+    +'<label><span class="lbl">Entite duree equivalente (h decimales) &mdash; optionnel</span><input id="rdur-'+i+'" value="'+esc(r.duration_entity||'')+'" placeholder="sensor.f1atb_duration_h" maxlength="63"></label>'
+    +'<label><span class="lbl">Entite ouverture triac (0-100 %) &mdash; optionnel</span><input id="rtri-'+i+'" value="'+esc(r.triac_entity||'')+'" placeholder="sensor.f1atb_triac_pct" maxlength="63"></label>'
+    +'</div></div>';
+}
+function liveRtrName(i){
+  var v=(document.getElementById('rname-'+i)||{}).value||'Routeur '+(i+1);
+  var hd=document.getElementById('rname-hd-'+i);if(hd)hd.textContent=v;
+}
+function renderRtrList(){
+  var h='';rtrState.forEach(function(r,i){h+=rtrHtml(r,i);});
+  document.getElementById('rtr-list').innerHTML=h;
+  document.getElementById('rtr-add-btn').style.display=rtrState.length>=4?'none':'';
+  document.getElementById('rtr-badge').textContent=rtrState.length;
+  updHaSection();
+}
+function updRtrItem(i){
+  var v=parseInt(document.querySelector('#rtr-item-'+i+' select').value);
+  rtrState[i].device=v;
+  document.getElementById('rha-'+i).style.display=v==1?'':'none';
+  updHaSection();
+}
+function addRtr(){if(rtrState.length>=4)return;rtrState.push({device:0,name:'',host:'',power_entity:'',energy_entity:'',active_entity:'',duration_entity:'',triac_entity:''});renderRtrList();}
+function removeRtr(i){rtrState.splice(i,1);renderRtrList();}
+function readRtrState(){rtrState.forEach(function(r,i){
+  r.name=(document.getElementById('rname-'+i)||{}).value||'';
+  r.device=parseInt((document.querySelector('#rtr-item-'+i+' select')||{}).value)||0;
+  r.host=(document.getElementById('rhost-'+i)||{}).value||'';
+  r.power_entity=(document.getElementById('rpwr-'+i)||{}).value||'';
+  r.energy_entity=(document.getElementById('ren-'+i)||{}).value||'';
+  r.active_entity=(document.getElementById('ract-'+i)||{}).value||'';
+  r.duration_entity=(document.getElementById('rdur-'+i)||{}).value||'';
+  r.triac_entity=(document.getElementById('rtri-'+i)||{}).value||'';
+});}
 function updWifi(){
   var v=document.querySelector('[name=wifi_dhcp]:checked');
   document.getElementById('static-fields').style.display=(v&&v.value==='0')?'':'none';
@@ -613,6 +805,11 @@ function fmtMem(used,total){
   var pct=Math.round(used/total*100);
   return (used/1024).toFixed(0)+' / '+(total/1024).toFixed(0)+' KB ('+pct+'%)';
 }
+function fmtMB(used,total){
+  if(!total) return used+' MB';
+  var pct=Math.round(used/total*100);
+  return used+' / '+total+' MB ('+pct+'%)';
+}
 function pad(n){return n<10?'0'+n:n;}
 function setDot(id,ok){var d=document.getElementById(id);d.className='dot '+(ok===null?'':ok?'ok':'err');}
 
@@ -656,6 +853,10 @@ function fetchStatus(){
     document.getElementById('hdr-ip').textContent=d.ip||'--';
     document.getElementById('hdr-rssi').innerHTML='WiFi '+bars(d.rssi||0);
 
+    document.getElementById('card-grid-name').textContent=(d.grid_name||'RESEAU').toUpperCase();
+    document.getElementById('card-solar-name').textContent=(d.solar_name||'SOLAIRE').toUpperCase();
+    if(typeof d.demo_mode!=='undefined'){demoActive=!!d.demo_mode;updDemoBtn();}
+
     setDot('gd',d.grid.online);
     document.getElementById('gs').textContent=d.grid.online?'En ligne':'Hors ligne';
     document.getElementById('gp').textContent=d.grid.online?fmtW(d.grid.power_w):'--';
@@ -686,6 +887,11 @@ function fetchStatus(){
     document.getElementById('i-up').textContent=fmtUp(d.uptime_s||0);
     document.getElementById('i-heap').textContent=fmtMem(d.total_heap-d.free_heap,d.total_heap);
     document.getElementById('i-psram').textContent=fmtMem(d.psram_total-d.psram_free,d.psram_total);
+    var sdEl=document.getElementById('i-sd');
+    if(sdEl){
+      if(d.sd_total_mb>0)sdEl.textContent=fmtMB(d.sd_used_mb,d.sd_total_mb);
+      else sdEl.textContent=d.sd_ready?'Montee (vide)':'Non disponible';
+    }
     document.getElementById('i-cpu').textContent=(d.cpu_mhz||0)+' MHz';
     document.getElementById('i-build').textContent=(d.version||'')+(d.build?' — '+d.build:'');
     document.getElementById('i-time').textContent=d.time?(d.date+' '+d.time):'NTP non sync';
@@ -709,18 +915,35 @@ function fetchStatus(){
       document.getElementById('sg-wrap').style.display='none';
     }
 
-    var batCard=document.getElementById('bat-card');
-    if(d.battery&&d.battery.configured){
-      batCard.style.display='';
-      setDot('bd',d.battery.online);
-      document.getElementById('bs').textContent=d.battery.online?'En ligne':'Hors ligne';
-      if(d.battery.online){
-        var bpStr=d.battery.power_w>=0?'+'+fmtW(d.battery.power_w)+' (decharge)':fmtW(d.battery.power_w)+' (charge)';
-        document.getElementById('bp').textContent=bpStr;
-        document.getElementById('bsoc').textContent='SOC : '+d.battery.soc_pct.toFixed(0)+' %';
-      }else{document.getElementById('bp').textContent='--';document.getElementById('bsoc').textContent='--';}
-      document.getElementById('btt').textContent=d.battery.device||'';
-    }else{batCard.style.display='none';}
+    var extra='';
+    (d.batteries||[]).forEach(function(b,i){
+      var onStr=b.online?'En ligne':'Hors ligne';
+      var dotCls='dot '+(b.online?'ok':'err');
+      var pw='--',soc='--';
+      if(b.online){pw=b.power_w>=0?'+'+fmtW(b.power_w)+' (decharge)':fmtW(b.power_w)+' (charge)';soc='SOC : '+b.soc_pct.toFixed(0)+' %';}
+      var nm=(b.name||(d.grid_name?'Batterie '+(i+1):'BATTERIE '+(i+1))).toUpperCase();
+      extra+='<div class="card"><div class="card-hd" style="color:#3fb950">'+nm+'</div>'
+        +'<div class="status-row"><span class="'+dotCls+'"></span><span>'+onStr+'</span></div>'
+        +'<div class="big">'+pw+'</div><div class="sub">'+soc+'</div>'
+        +'<div class="tag">'+(b.device||'')+'</div></div>';
+    });
+    (d.routers||[]).forEach(function(r,i){
+      var onStr=r.online?(r.active?'Actif':'En veille'):'Hors ligne';
+      var dotCls='dot '+(r.online?(r.active?'ok':''):'err');
+      var pw='--',sub='';
+      if(r.online){
+        pw=r.power_w>0?fmtW(r.power_w):(r.triac_pct>0?Math.round(r.triac_pct)+'%':'--');
+        if(r.duration_h>0){var h=Math.floor(r.duration_h),m=Math.round((r.duration_h-h)*60);sub+=pad(h)+'h'+pad(m);}
+        if(r.triac_pct>0)sub+=(sub?' &nbsp;':'')+Math.round(r.triac_pct)+'%';
+        if(r.today_kwh>0)sub+=(sub?'<br>':'')+r.today_kwh.toFixed(2)+' kWh auj.';
+      }
+      var nm=(r.name||('ROUTEUR '+(i+1))).toUpperCase();
+      extra+='<div class="card"><div class="card-hd" style="color:#f4a429">'+nm+'</div>'
+        +'<div class="status-row"><span class="'+dotCls+'"></span><span>'+onStr+'</span></div>'
+        +'<div class="big">'+pw+'</div><div class="sub">'+sub+'</div>'
+        +'<div class="tag">'+(r.device||'')+'</div></div>';
+    });
+    document.getElementById('extra-cards').innerHTML=extra;
     updateIndicator(d.grid.power_w, d.solar.power_w);
   }).catch(function(){});
 }
@@ -785,6 +1008,8 @@ function loadCfg(){
   fetch('/api/config').then(function(r){return r.json();}).then(function(c){
     var f=document.getElementById('cfg');
     f.elements.device_name.value=c.device_name||'';
+    f.elements.grid_name.value=c.grid_name||'Réseau';
+    f.elements.solar_name.value=c.solar_name||'Solaire';
     f.elements.grid_device.value=c.grid_device||0;
     f.elements.grid_host.value=c.grid_host||'';
     f.elements.solar_device.value=c.solar_device||0;
@@ -800,9 +1025,15 @@ function loadCfg(){
     f.elements.timezone.value=c.timezone||'CET-1CEST,M3.5.0,M10.5.0/3';
     updSolar();
     updGrid();
-    f.elements.battery_device.value=c.battery_device||0;
-    f.elements.battery_host.value=c.battery_host||'';
-    updBattery();
+    updSecLabels();
+    f.elements.grid_energy_entity.value=c.grid_energy_entity||'';
+    f.elements.solar_energy_entity.value=c.solar_energy_entity||'';
+    hostState=(c.hosts||[]).filter(function(h){return h.name||h.ip;});
+    batState=(c.batteries||[]).filter(function(b){return b.device>0;});
+    rtrState=(c.routers||[]).filter(function(r){return r.device>0;});
+    renderHostList();
+    renderBatList();
+    renderRtrList();
 
     var mf=document.getElementById('mqtt-form');
     mf.elements.mqtt_enabled.checked=(c.mqtt_enabled==1);
@@ -829,17 +1060,22 @@ function loadCfg(){
 
 function saveCfg(e){
   e.preventDefault();
+  readHostState(); readBatState(); readRtrState();
   var fd=new FormData(e.target),data={};
   fd.forEach(function(v,k){data[k]=v;});
   data.grid_device=parseInt(data.grid_device)||0;
   data.solar_device=parseInt(data.solar_device)||0;
   data.solar_max_w=parseInt(data.solar_max_w)||0;
   data.display_rotation=parseInt(data.display_rotation)||0;
-  data.battery_device=parseInt(data.battery_device)||0;
   data.ha_token=data.ha_token||'';
   data.grid_entity=data.grid_entity||'';
   data.solar_entity=data.solar_entity||'';
   data.timezone=data.timezone||'CET-1CEST,M3.5.0,M10.5.0/3';
+  data.grid_name=data.grid_name||'Réseau';
+  data.solar_name=data.solar_name||'Solaire';
+  data.hosts=hostState.filter(function(h){return h.name||h.ip;});
+  data.batteries=batState;
+  data.routers=rtrState;
   fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
     .then(function(r){
       if(r.ok){toast('Sauvegarde OK — redemarrage...','ok');setTimeout(function(){location.reload();},4500);}
@@ -888,6 +1124,29 @@ function saveMqtt(e){
     }).catch(function(){toast('Erreur reseau','err');});
 }
 
+/* ── Mode demo ── */
+var demoActive=false;
+function updDemoBtn(){
+  var btn=document.getElementById('demo-btn');
+  var st=document.getElementById('demo-st');
+  var badge=document.getElementById('demo-badge');
+  if(btn){
+    btn.textContent=demoActive?'Desactiver le mode demo':'Activer le mode demo';
+    btn.style.cssText=demoActive?'min-width:180px;background:#f4a429;color:#000;border-color:#f4a429':'min-width:180px';
+  }
+  if(st) st.textContent=demoActive?'Valeurs fictives actives — appareils non interroges':'Mode normal — donnees reelles';
+  if(badge) badge.style.display=demoActive?'':'none';
+}
+async function toggleDemo(){
+  try{
+    var r=await fetch('/api/demo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({demo:!demoActive})});
+    var d=await r.json();
+    demoActive=d.demo;
+    updDemoBtn();
+    toast(demoActive?'Mode demo actif':'Mode demo desactive','ok');
+  }catch(e){toast('Erreur','err');}
+}
+
 /* ── OTA ── */
 function doOta(e){
   e.preventDefault();
@@ -932,12 +1191,14 @@ static void handle_root() {
 static void handle_status() {
     GridData    grid    = {};
     SolarData   solar   = {};
-    BatteryData battery = {};
+    BatteryData batteries[MAX_BATTERIES] = {};
+    RouterData  routers[MAX_ROUTERS]     = {};
 
     if (g_data.mutex && xSemaphoreTake(g_data.mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        grid    = g_data.grid;
-        solar   = g_data.solar;
-        battery = g_data.battery;
+        grid  = g_data.grid;
+        solar = g_data.solar;
+        memcpy(batteries, g_data.batteries, sizeof(batteries));
+        memcpy(routers,   g_data.routers,   sizeof(routers));
         xSemaphoreGive(g_data.mutex);
     }
 
@@ -956,6 +1217,12 @@ static void handle_status() {
     doc["cpu_mhz"]     = ESP.getCpuFreqMHz();
     doc["ap_active"]   = ap_active;
     doc["ap_ip"]       = ap_active ? "192.168.4.1" : "";
+    doc["grid_name"]   = g_cfg.grid_name;
+    doc["solar_name"]  = g_cfg.solar_name;
+    doc["demo_mode"]   = g_cfg.demo_mode;
+    doc["sd_ready"]    = sd_ready();
+    doc["sd_used_mb"]  = (uint32_t)(sd_used_bytes()  / (1024ULL * 1024ULL));
+    doc["sd_total_mb"] = (uint32_t)(sd_total_bytes() / (1024ULL * 1024ULL));
 
     struct tm ti;
     if (getLocalTime(&ti, 0)) {
@@ -987,12 +1254,45 @@ static void handle_status() {
     s["is_opendtu"] = (g_cfg.solar_device == SolarDevice::OPENDTU);
     s["max_w"]      = g_cfg.solar_max_w;
 
-    auto b = doc["battery"].to<JsonObject>();
-    b["configured"] = (g_cfg.battery_device != BatteryDevice::NONE);
-    b["online"]     = battery.online;
-    b["power_w"]    = battery.power_w;
-    b["soc_pct"]    = battery.soc_pct;
-    b["device"]     = battery_device_label(g_cfg.battery_device);
+    auto bats = doc["batteries"].to<JsonArray>();
+    for (int i = 0; i < MAX_BATTERIES; i++) {
+        if (g_cfg.batteries[i].device == BatteryDevice::NONE) continue;
+        auto b = bats.add<JsonObject>();
+        b["idx"]     = i;
+        b["name"]    = g_cfg.batteries[i].name;
+        b["online"]  = batteries[i].online;
+        b["power_w"] = batteries[i].power_w;
+        b["soc_pct"] = batteries[i].soc_pct;
+        b["device"]  = battery_device_label(g_cfg.batteries[i].device);
+    }
+    auto rtrs = doc["routers"].to<JsonArray>();
+    bool f1atb_direct = (g_cfg.grid_device == GridDevice::F1ATB &&
+                         g_cfg.routers[0].device == RouterDevice::NONE);
+    if (f1atb_direct) {
+        auto r = rtrs.add<JsonObject>();
+        r["idx"]        = 0;
+        r["name"]       = g_cfg.routers[0].name;
+        r["online"]     = routers[0].online;
+        r["power_w"]    = routers[0].power_w;
+        r["triac_pct"]  = routers[0].triac_pct;
+        r["today_kwh"]  = routers[0].today_kwh;
+        r["duration_h"] = routers[0].duration_h;
+        r["active"]     = routers[0].active;
+        r["device"]     = "F1ATB direct";
+    }
+    for (int i = 0; i < MAX_ROUTERS; i++) {
+        if (g_cfg.routers[i].device == RouterDevice::NONE) continue;
+        auto r = rtrs.add<JsonObject>();
+        r["idx"]        = i;
+        r["name"]       = g_cfg.routers[i].name;
+        r["online"]     = routers[i].online;
+        r["power_w"]    = routers[i].power_w;
+        r["triac_pct"]  = routers[i].triac_pct;
+        r["today_kwh"]  = routers[i].today_kwh;
+        r["duration_h"] = routers[i].duration_h;
+        r["active"]     = routers[i].active;
+        r["device"]     = router_device_label(g_cfg.routers[i].device);
+    }
 
     String out;
     serializeJson(doc, out);
@@ -1001,10 +1301,13 @@ static void handle_status() {
 
 // ─── Données journalières ─────────────────────────────────────────────────────
 static void handle_daily() {
-    static DayPoint snap[288];
+    if (!s_day_snap || !s_web_buf) {
+        server.send(503, "application/json", "{\"error\":\"buffer indisponible\"}");
+        return;
+    }
     int head, count;
     taskENTER_CRITICAL(&day_mux);
-    memcpy(snap, day_ring, day_count * sizeof(DayPoint));
+    memcpy(s_day_snap, day_ring, day_count * sizeof(DayPoint));
     head  = day_head;
     count = day_count;
     taskEXIT_CRITICAL(&day_mux);
@@ -1015,8 +1318,8 @@ static void handle_daily() {
     int start = (count < 288) ? 0 : head;
     for (int i = 0; i < count; i++) {
         int idx = (start + i) % 288;
-        float gp = snap[idx].gw;
-        float sp = snap[idx].sw;
+        float gp = s_day_snap[idx].gw;
+        float sp = s_day_snap[idx].sw;
         if (gp > 0) g_kwh  += gp * dt_h / 1000.0;
         if (sp > 0) s_kwh  += sp * dt_h / 1000.0;
         float self = sp + (gp < 0 ? gp : 0.0f);
@@ -1025,31 +1328,33 @@ static void handle_daily() {
     int ac_pct  = (s_kwh  > 0.01) ? (int)min(100.0, self_kwh / s_kwh        * 100.0) : 0;
     int as_pct  = (g_kwh + s_kwh > 0.01) ? (int)min(100.0, self_kwh / (g_kwh + s_kwh) * 100.0) : 0;
 
-    // Sérialisation (max 300 pts decimés)
-    static char buf[14000];
+    // Sérialisation (max 300 pts decimés) — s_web_buf partagé (22 KB PSRAM)
+    const size_t BUF_SZ = 22000;
     size_t pos = 0;
-    pos += snprintf(buf + pos, sizeof(buf) - pos, "{\"pts\":[");
+    pos += snprintf(s_web_buf + pos, BUF_SZ - pos, "{\"pts\":[");
     int step = (count > 300) ? count / 300 : 1;
     bool first = true;
     for (int i = 0; i < count; i += step) {
         int idx = (start + i) % 288;
-        if (!first) buf[pos++] = ',';
+        if (!first) s_web_buf[pos++] = ',';
         first = false;
-        int n = snprintf(buf + pos, sizeof(buf) - pos,
+        int n = snprintf(s_web_buf + pos, BUF_SZ - pos,
                          "{\"ts\":%ld,\"gp\":%.0f,\"sp\":%.0f}",
-                         (long)snap[idx].ts, snap[idx].gw, snap[idx].sw);
+                         (long)s_day_snap[idx].ts, s_day_snap[idx].gw, s_day_snap[idx].sw);
         pos += n;
-        if (pos > sizeof(buf) - 200) break;
+        if (pos > BUF_SZ - 200) break;
     }
-    snprintf(buf + pos, sizeof(buf) - pos,
+    snprintf(s_web_buf + pos, BUF_SZ - pos,
              "],\"g_kwh\":%.2f,\"s_kwh\":%.2f,\"ac\":%d,\"as_\":%d}",
              g_kwh, s_kwh, ac_pct, as_pct);
-    server.send(200, "application/json", buf);
+    server.send(200, "application/json", s_web_buf);
 }
 
 static void handle_config_get() {
     JsonDocument doc;
     doc["device_name"]  = g_cfg.device_name;
+    doc["grid_name"]    = g_cfg.grid_name;
+    doc["solar_name"]   = g_cfg.solar_name;
     doc["grid_device"]  = (int)g_cfg.grid_device;
     doc["grid_host"]    = g_cfg.grid_host;
     doc["solar_device"] = (int)g_cfg.solar_device;
@@ -1063,8 +1368,37 @@ static void handle_config_get() {
     doc["grid_entity"]       = g_cfg.grid_entity;
     doc["solar_entity"]      = g_cfg.solar_entity;
     doc["timezone"]          = g_cfg.timezone;
-    doc["battery_device"]    = (int)g_cfg.battery_device;
-    doc["battery_host"]      = g_cfg.battery_host;
+    doc["grid_energy_entity"]  = g_cfg.grid_energy_entity;
+    doc["solar_energy_entity"] = g_cfg.solar_energy_entity;
+
+    auto batArr = doc["batteries"].to<JsonArray>();
+    for (int i = 0; i < MAX_BATTERIES; i++) {
+        auto b = batArr.add<JsonObject>();
+        b["device"]       = (int)g_cfg.batteries[i].device;
+        b["name"]         = g_cfg.batteries[i].name;
+        b["host"]         = g_cfg.batteries[i].host;
+        b["power_entity"] = g_cfg.batteries[i].power_entity;
+        b["soc_entity"]   = g_cfg.batteries[i].soc_entity;
+    }
+    auto rtrArr = doc["routers"].to<JsonArray>();
+    for (int i = 0; i < MAX_ROUTERS; i++) {
+        auto r = rtrArr.add<JsonObject>();
+        r["device"]           = (int)g_cfg.routers[i].device;
+        r["name"]             = g_cfg.routers[i].name;
+        r["host"]             = g_cfg.routers[i].host;
+        r["power_entity"]     = g_cfg.routers[i].power_entity;
+        r["energy_entity"]    = g_cfg.routers[i].energy_entity;
+        r["active_entity"]    = g_cfg.routers[i].active_entity;
+        r["duration_entity"]  = g_cfg.routers[i].duration_entity;
+        r["triac_entity"]     = g_cfg.routers[i].triac_entity;
+    }
+    auto hostsArr = doc["hosts"].to<JsonArray>();
+    for (int i = 0; i < MAX_HOSTS; i++) {
+        if (!g_cfg.hosts[i].name[0] && !g_cfg.hosts[i].ip[0]) continue;
+        auto h = hostsArr.add<JsonObject>();
+        h["name"] = g_cfg.hosts[i].name;
+        h["ip"]   = g_cfg.hosts[i].ip;
+    }
 
     doc["mqtt_enabled"] = g_mqtt.enabled ? 1 : 0;
     doc["mqtt_host"]    = g_mqtt.host;
@@ -1105,7 +1439,9 @@ static void handle_config_post() {
     }
 
     DeviceConfig cfg = g_cfg;
-    strncpy(cfg.device_name, doc["device_name"] | cfg.device_name, sizeof(cfg.device_name) - 1);
+    strncpy(cfg.device_name,  doc["device_name"]  | cfg.device_name,  sizeof(cfg.device_name)  - 1);
+    strncpy(cfg.grid_name,    doc["grid_name"]    | cfg.grid_name,    sizeof(cfg.grid_name)    - 1);
+    strncpy(cfg.solar_name,   doc["solar_name"]   | cfg.solar_name,   sizeof(cfg.solar_name)   - 1);
     cfg.grid_device = (GridDevice)(int)(doc["grid_device"] | (int)cfg.grid_device);
     strncpy(cfg.grid_host,    doc["grid_host"]    | cfg.grid_host,    sizeof(cfg.grid_host)    - 1);
     cfg.solar_device = (SolarDevice)(int)(doc["solar_device"] | (int)cfg.solar_device);
@@ -1119,8 +1455,49 @@ static void handle_config_post() {
     strncpy(cfg.grid_entity,  doc["grid_entity"]  | cfg.grid_entity,  sizeof(cfg.grid_entity)  - 1);
     strncpy(cfg.solar_entity, doc["solar_entity"] | cfg.solar_entity, sizeof(cfg.solar_entity) - 1);
     strncpy(cfg.timezone,     doc["timezone"]     | cfg.timezone,     sizeof(cfg.timezone)     - 1);
-    cfg.battery_device = (BatteryDevice)(int)(doc["battery_device"] | (int)cfg.battery_device);
-    strncpy(cfg.battery_host, doc["battery_host"] | cfg.battery_host, sizeof(cfg.battery_host) - 1);
+    strncpy(cfg.grid_energy_entity,  doc["grid_energy_entity"]  | cfg.grid_energy_entity,  sizeof(cfg.grid_energy_entity)  - 1);
+    strncpy(cfg.solar_energy_entity, doc["solar_energy_entity"] | cfg.solar_energy_entity, sizeof(cfg.solar_energy_entity) - 1);
+
+    if (doc["batteries"].is<JsonArray>()) {
+        JsonArrayConst batArr = doc["batteries"].as<JsonArrayConst>();
+        for (int i = 0; i < MAX_BATTERIES; i++) cfg.batteries[i] = {};
+        int n = (int)batArr.size(); if (n > MAX_BATTERIES) n = MAX_BATTERIES;
+        for (int i = 0; i < n; i++) {
+            JsonObjectConst b = batArr[i];
+            cfg.batteries[i].device = (BatteryDevice)(int)(b["device"] | 0);
+            strncpy(cfg.batteries[i].name,         b["name"]         | "", 31);
+            strncpy(cfg.batteries[i].host,         b["host"]         | "", 63);
+            strncpy(cfg.batteries[i].power_entity, b["power_entity"] | "", 63);
+            strncpy(cfg.batteries[i].soc_entity,   b["soc_entity"]   | "", 63);
+        }
+    }
+    if (doc["routers"].is<JsonArray>()) {
+        JsonArrayConst rtrArr = doc["routers"].as<JsonArrayConst>();
+        for (int i = 0; i < MAX_ROUTERS; i++) cfg.routers[i] = {};
+        int n = (int)rtrArr.size(); if (n > MAX_ROUTERS) n = MAX_ROUTERS;
+        for (int i = 0; i < n; i++) {
+            JsonObjectConst r = rtrArr[i];
+            cfg.routers[i].device = (RouterDevice)(int)(r["device"] | 0);
+            strncpy(cfg.routers[i].name,            r["name"]            | "", 31);
+            strncpy(cfg.routers[i].host,            r["host"]            | "", 63);
+            strncpy(cfg.routers[i].power_entity,    r["power_entity"]    | "", 63);
+            strncpy(cfg.routers[i].energy_entity,   r["energy_entity"]   | "", 63);
+            strncpy(cfg.routers[i].active_entity,   r["active_entity"]   | "", 63);
+            strncpy(cfg.routers[i].duration_entity, r["duration_entity"] | "", 63);
+            strncpy(cfg.routers[i].triac_entity,    r["triac_entity"]    | "", 63);
+        }
+    }
+
+    if (doc["hosts"].is<JsonArray>()) {
+        JsonArrayConst hostsArr = doc["hosts"].as<JsonArrayConst>();
+        for (int i = 0; i < MAX_HOSTS; i++) cfg.hosts[i] = {};
+        int n = (int)hostsArr.size(); if (n > MAX_HOSTS) n = MAX_HOSTS;
+        for (int i = 0; i < n; i++) {
+            JsonObjectConst h = hostsArr[i];
+            strncpy(cfg.hosts[i].name, h["name"] | "", 31);
+            strncpy(cfg.hosts[i].ip,   h["ip"]   | "", 63);
+        }
+    }
 
     device_config_save(cfg);
     g_cfg = cfg;
@@ -1224,18 +1601,22 @@ static void handle_history() {
     if (server.hasArg("n")) n = server.arg("n").toInt();
     if (n < 1) n = 1;
     if (n > 500) n = 500;
-    static char hist_buf[22000];
-    if (sd_get_history(hist_buf, sizeof(hist_buf), n))
-        server.send(200, "application/json", hist_buf);
+    if (!s_web_buf) { server.send(503, "application/json", "{\"error\":\"buffer indisponible\"}"); return; }
+    if (sd_get_history(s_web_buf, 22000, n))
+        server.send(200, "application/json", s_web_buf);
     else
         server.send(500, "application/json", "{\"error\":\"buffer insuffisant\"}");
 }
 
 static void handle_realtime() {
+    if (!rt_ring || !s_web_buf) {
+        server.send(503, "application/json", "[]");
+        return;
+    }
     RTPoint snap[90];
     int head, count;
     taskENTER_CRITICAL(&rt_mux);
-    memcpy(snap, rt_ring, sizeof(rt_ring));
+    memcpy(snap, rt_ring, sizeof(RTPoint) * 90);
     head  = rt_head;
     count = rt_count;
     taskEXIT_CRITICAL(&rt_mux);
@@ -1245,9 +1626,9 @@ static void handle_realtime() {
         return;
     }
 
-    static char buf[8192];
+    const size_t BUF_SZ = 8192;
     size_t pos = 0;
-    buf[pos++] = '[';
+    s_web_buf[pos++] = '[';
     int start = (count < 90) ? 0 : head;
     for (int i = 0; i < count; i++) {
         int idx = (start + i) % 90;
@@ -1255,14 +1636,30 @@ static void handle_realtime() {
         int n = snprintf(entry, sizeof(entry),
                          "{\"ts\":%ld,\"gp\":%.1f,\"sp\":%.1f}",
                          (long)snap[idx].ts, snap[idx].gw, snap[idx].sw);
-        if (pos + n + 2 >= sizeof(buf)) break;
-        memcpy(buf + pos, entry, n);
+        if (pos + n + 2 >= BUF_SZ) break;
+        memcpy(s_web_buf + pos, entry, n);
         pos += n;
-        if (i < count - 1) buf[pos++] = ',';
+        if (i < count - 1) s_web_buf[pos++] = ',';
     }
-    buf[pos++] = ']';
-    buf[pos]   = '\0';
-    server.send(200, "application/json", buf);
+    s_web_buf[pos++] = ']';
+    s_web_buf[pos]   = '\0';
+    server.send(200, "application/json", s_web_buf);
+}
+
+static void handle_demo_toggle() {
+    String body = server.arg("plain");
+    JsonDocument doc;
+    bool new_state = !g_cfg.demo_mode;
+    if (!deserializeJson(doc, body) && doc["demo"].is<bool>()) {
+        new_state = doc["demo"].as<bool>();
+    }
+    g_cfg.demo_mode = new_state;
+    Preferences p;
+    p.begin("dev_cfg", false);
+    p.putBool("demo_mode", new_state);
+    p.end();
+    Serial.printf("[demo] mode %s\n", new_state ? "ACTIF" : "inactif");
+    server.send(200, "application/json", new_state ? "{\"demo\":true}" : "{\"demo\":false}");
 }
 
 static void handle_restart() {
@@ -1292,6 +1689,7 @@ static void web_task(void *) {
     server.on("/api/wifi/scan",     HTTP_POST, handle_wifi_scan_start);
     server.on("/api/wifi/networks", HTTP_GET,  handle_wifi_networks);
     server.on("/api/restart",       HTTP_POST, handle_restart);
+    server.on("/api/demo",          HTTP_POST, handle_demo_toggle);
     server.on("/api/realtime",      HTTP_GET,  handle_realtime);
     server.on("/api/mqtt",          HTTP_POST, handle_mqtt_post);
     server.on("/api/history",       HTTP_GET,  handle_history);
@@ -1338,6 +1736,25 @@ static void web_task(void *) {
     }
 }
 
+static void* psram_or_heap(size_t sz) {
+    void *p = heap_caps_malloc(sz, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!p) p = malloc(sz);
+    return p;
+}
+
 void webserver_start() {
+    rt_ring    = (RTPoint*) psram_or_heap(sizeof(RTPoint)  * 90);
+    day_ring   = (DayPoint*)psram_or_heap(sizeof(DayPoint) * 288);
+    s_log_snap = (DayPoint*)psram_or_heap(sizeof(DayPoint) * 288);
+    s_rst_tmp  = (DayPoint*)psram_or_heap(sizeof(DayPoint) * 288);
+    s_day_snap = (DayPoint*)psram_or_heap(sizeof(DayPoint) * 288);
+    s_web_buf  = (char*)    psram_or_heap(22000);
+    if (rt_ring)    memset(rt_ring,    0, sizeof(RTPoint)  * 90);
+    if (day_ring)   memset(day_ring,   0, sizeof(DayPoint) * 288);
+    if (s_log_snap) memset(s_log_snap, 0, sizeof(DayPoint) * 288);
+    if (s_rst_tmp)  memset(s_rst_tmp,  0, sizeof(DayPoint) * 288);
+    if (s_day_snap) memset(s_day_snap, 0, sizeof(DayPoint) * 288);
+    Serial.printf("[web] PSRAM buffers: rt=%p day=%p snap=%p buf=%p\n",
+                  rt_ring, day_ring, s_day_snap, s_web_buf);
     xTaskCreatePinnedToCore(web_task, "web", 12288, nullptr, 1, nullptr, 0);
 }
