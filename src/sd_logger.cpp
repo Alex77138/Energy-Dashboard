@@ -32,6 +32,9 @@ bool sd_ready() {
     return s_ready;
 }
 
+uint64_t sd_used_bytes()  { return s_ready ? SD.usedBytes()  : 0; }
+uint64_t sd_total_bytes() { return s_ready ? SD.totalBytes() : 0; }
+
 void sd_log(const AppData &d) {
     if (!s_ready) return;
 
@@ -116,12 +119,13 @@ bool sd_load_day_ring(int *yday, int *count, int *head, int32_t *last_ts,
     return ok;
 }
 
+// Deux passes sur le fichier : passe 1 enregistre les offsets des lignes (2 KB),
+// passe 2 relit chaque ligne depuis son offset. Évite le buffer lines[500][128] (64 KB).
 bool sd_get_history(char *out, size_t out_sz, int count) {
     if (!s_ready) {
         if (out_sz > 2) { out[0] = '['; out[1] = ']'; out[2] = '\0'; }
         return true;
     }
-
     if (count > 500) count = 500;
 
     File f = SD.open(LOG_FILE, FILE_READ);
@@ -129,93 +133,91 @@ bool sd_get_history(char *out, size_t out_sz, int count) {
         if (out_sz > 2) { out[0] = '['; out[1] = ']'; out[2] = '\0'; }
         return true;
     }
-
-    size_t file_size = f.size();
-    if (file_size == 0) {
+    if (f.size() == 0) {
         f.close();
         if (out_sz > 2) { out[0] = '['; out[1] = ']'; out[2] = '\0'; }
         return true;
     }
 
-    static char line_buf[128];
-    static char lines[500][128];
-    int line_count = 0;
-    int buf_pos = 0;
+    // Passe 1 : ring buffer d'offsets de début de ligne (500 × 4 = 2 000 octets)
+    static size_t offsets[500];
+    int ring_w = 0, total = 0;
+    bool bol = true, header_done = false;
+    size_t byte_pos = 0;
 
     f.seek(0);
-    bool first_line = true;
-
     while (f.available()) {
-        char c = f.read();
-        if (c == '\n' || c == '\r') {
-            if (buf_pos > 0) {
-                line_buf[buf_pos] = '\0';
-                buf_pos = 0;
-                if (first_line) {
-                    first_line = false;
-                    continue;
-                }
-                if (line_count < 500) {
-                    strncpy(lines[line_count], line_buf, 127);
-                    lines[line_count][127] = '\0';
-                    line_count++;
-                } else {
-                    for (int i = 0; i < 499; i++) {
-                        memcpy(lines[i], lines[i+1], 128);
-                    }
-                    strncpy(lines[499], line_buf, 127);
-                    lines[499][127] = '\0';
-                }
-            }
-        } else {
-            if (buf_pos < 127) {
-                line_buf[buf_pos++] = c;
+        char c = (char)f.read();
+        if (c == '\r') { byte_pos++; continue; }
+        if (bol && c != '\n') {
+            bol = false;
+            if (!header_done) {
+                header_done = true;
+            } else {
+                offsets[ring_w] = byte_pos;
+                ring_w = (ring_w + 1) % 500;
+                total++;
             }
         }
+        if (c == '\n') bol = true;
+        byte_pos++;
     }
-    f.close();
 
-    int start = (line_count > count) ? (line_count - count) : 0;
-    int actual = line_count - start;
+    if (total == 0) {
+        f.close();
+        if (out_sz > 2) { out[0] = '['; out[1] = ']'; out[2] = '\0'; }
+        return true;
+    }
 
+    // Calcul de la première ligne à inclure dans les `count` dernières
+    int in_ring  = (total < 500) ? total : 500;
+    int actual   = (in_ring < count) ? in_ring : count;
+    int oldest   = (total > 500) ? ring_w : 0;
+    int skip     = in_ring - actual;
+    int ring_start = (oldest + skip) % 500;
+
+    // Passe 2 : lecture par offset, formatage JSON
     size_t pos = 0;
-    if (pos + 1 >= out_sz) return false;
+    if (pos + 1 >= out_sz) { f.close(); return false; }
     out[pos++] = '[';
 
-    for (int i = start; i < line_count; i++) {
-        char ts_str[32]  = {0};
-        char gp_str[16]  = {0};
-        char gk_str[16]  = {0};
-        char sp_str[16]  = {0};
-        char sk_str[16]  = {0};
-
-        if (sscanf(lines[i], "%31[^,],%15[^,],%15[^,],%15[^,],%15s",
-                   ts_str, gp_str, gk_str, sp_str, sk_str) != 5) {
-            continue;
+    static char line_buf[128];
+    bool first_out = true;
+    for (int i = 0; i < actual; i++) {
+        f.seek(offsets[(ring_start + i) % 500]);
+        int lpos = 0;
+        while (f.available() && lpos < 127) {
+            char c = (char)f.read();
+            if (c == '\n' || c == '\r') break;
+            line_buf[lpos++] = c;
         }
+        line_buf[lpos] = '\0';
+        if (lpos == 0) continue;
+
+        char ts[32]={}, gp[16]={}, gk[16]={}, sp[16]={}, sk[16]={};
+        if (sscanf(line_buf, "%31[^,],%15[^,],%15[^,],%15[^,],%15s",
+                   ts, gp, gk, sp, sk) != 5) continue;
 
         char entry[160];
-        bool is_uptime = (ts_str[0] == 'U');
-        if (is_uptime) {
-            snprintf(entry, sizeof(entry),
+        int n;
+        if (ts[0] == 'U')
+            n = snprintf(entry, sizeof(entry),
                 "{\"ts\":\"%s\",\"gp\":%s,\"gk\":%s,\"sp\":%s,\"sk\":%s}",
-                ts_str, gp_str, gk_str, sp_str, sk_str);
-        } else {
-            snprintf(entry, sizeof(entry),
+                ts, gp, gk, sp, sk);
+        else
+            n = snprintf(entry, sizeof(entry),
                 "{\"ts\":%s,\"gp\":%s,\"gk\":%s,\"sp\":%s,\"sk\":%s}",
-                ts_str, gp_str, gk_str, sp_str, sk_str);
-        }
+                ts, gp, gk, sp, sk);
 
-        size_t entry_len = strlen(entry);
-        bool last = (i == line_count - 1);
-        size_t needed = entry_len + (last ? 0 : 1);
-
-        if (pos + needed + 1 >= out_sz) return false;
-        memcpy(out + pos, entry, entry_len);
-        pos += entry_len;
-        if (!last) out[pos++] = ',';
+        size_t needed = n + (first_out ? 0 : 1);
+        if (pos + needed + 1 >= out_sz) break;
+        if (!first_out) out[pos++] = ',';
+        first_out = false;
+        memcpy(out + pos, entry, n);
+        pos += n;
     }
 
+    f.close();
     if (pos + 1 >= out_sz) return false;
     out[pos++] = ']';
     out[pos]   = '\0';
