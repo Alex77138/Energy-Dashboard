@@ -153,6 +153,25 @@ void device_config_load() {
     }
 
     p.end();
+
+    // Auto-désactiver le mode démo si au moins un vrai appareil est configuré
+    if (g_cfg.demo_mode) {
+        bool has_device = (g_cfg.grid_device != GridDevice::NONE);
+        for (int i = 0; !has_device && i < MAX_SOLAR; i++)
+            has_device = (g_cfg.solars[i].device != SolarDevice::NONE);
+        for (int i = 0; !has_device && i < MAX_BATTERIES; i++)
+            has_device = (g_cfg.batteries[i].device != BatteryDevice::NONE);
+        for (int i = 0; !has_device && i < MAX_ROUTERS; i++)
+            has_device = (g_cfg.routers[i].device != RouterDevice::NONE);
+        if (has_device) {
+            g_cfg.demo_mode = false;
+            Preferences pd;
+            pd.begin(NVS_NS, false);
+            pd.putBool("demo_mode", false);
+            pd.end();
+            Serial.println("[cfg] demo_mode desactive automatiquement (appareils configures)");
+        }
+    }
 }
 
 void device_config_save(const DeviceConfig &cfg) {

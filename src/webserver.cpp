@@ -1667,7 +1667,19 @@ static void handle_config_post() {
     cfg.display_rotation = (uint8_t)(int)(doc["display_rotation"] | (int)cfg.display_rotation);
     strncpy(cfg.ha_token,  doc["ha_token"]  | cfg.ha_token,  sizeof(cfg.ha_token)  - 1);
     strncpy(cfg.timezone,  doc["timezone"]  | cfg.timezone,  sizeof(cfg.timezone)  - 1);
-    if (doc["demo_mode"].is<bool>()) cfg.demo_mode = doc["demo_mode"].as<bool>();
+    // demo_mode depuis le JSON si fourni ; sinon auto-désactivé dès qu'un vrai appareil est configuré
+    if (doc["demo_mode"].is<bool>()) {
+        cfg.demo_mode = doc["demo_mode"].as<bool>();
+    } else {
+        bool has_device = (cfg.grid_device != GridDevice::NONE);
+        for (int i = 0; !has_device && i < MAX_SOLAR; i++)
+            has_device = (cfg.solars[i].device != SolarDevice::NONE);
+        for (int i = 0; !has_device && i < MAX_BATTERIES; i++)
+            has_device = (cfg.batteries[i].device != BatteryDevice::NONE);
+        for (int i = 0; !has_device && i < MAX_ROUTERS; i++)
+            has_device = (cfg.routers[i].device != RouterDevice::NONE);
+        if (has_device) cfg.demo_mode = false;
+    }
 
     if (doc["solars"].is<JsonArray>()) {
         JsonArrayConst solArr = doc["solars"].as<JsonArrayConst>();
