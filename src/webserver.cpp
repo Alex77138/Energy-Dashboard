@@ -1211,6 +1211,7 @@ function saveCfg(e){
   data.hosts=hostState.filter(function(h){return h.name||h.ip;});
   data.batteries=batState;
   data.routers=rtrState;
+  data.demo_mode=demoActive;
   fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
     .then(function(r){
       if(r.ok){toast('Sauvegarde OK — redemarrage...','ok');setTimeout(function(){location.reload();},4500);}
@@ -1666,6 +1667,7 @@ static void handle_config_post() {
     cfg.display_rotation = (uint8_t)(int)(doc["display_rotation"] | (int)cfg.display_rotation);
     strncpy(cfg.ha_token,  doc["ha_token"]  | cfg.ha_token,  sizeof(cfg.ha_token)  - 1);
     strncpy(cfg.timezone,  doc["timezone"]  | cfg.timezone,  sizeof(cfg.timezone)  - 1);
+    if (doc["demo_mode"].is<bool>()) cfg.demo_mode = doc["demo_mode"].as<bool>();
 
     if (doc["solars"].is<JsonArray>()) {
         JsonArrayConst solArr = doc["solars"].as<JsonArrayConst>();
