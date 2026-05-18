@@ -14,7 +14,7 @@ Arduino_ESP8266SPI::Arduino_ESP8266SPI(int8_t dc, int8_t cs /* = GFX_NOT_DEFINED
 {
 }
 
-void Arduino_ESP8266SPI::begin(int32_t speed, int8_t dataMode)
+bool Arduino_ESP8266SPI::begin(int32_t speed, int8_t dataMode)
 {
   _speed = (speed == GFX_NOT_DEFINED) ? SPI_DEFAULT_FREQ : speed;
   _dataMode = (dataMode == GFX_NOT_DEFINED) ? SPI_MODE0 : dataMode;
@@ -45,6 +45,8 @@ void Arduino_ESP8266SPI::begin(int32_t speed, int8_t dataMode)
   SPI.setBitOrder(MSBFIRST);
   SPI.setDataMode(_dataMode);
   SPI.setFrequency(_speed);
+
+  return true;
 }
 
 void Arduino_ESP8266SPI::beginWrite()
@@ -73,6 +75,18 @@ void Arduino_ESP8266SPI::writeCommand16(uint16_t c)
   DC_LOW();
 
   WRITE16(c);
+
+  DC_HIGH();
+}
+
+void Arduino_ESP8266SPI::writeCommandBytes(uint8_t *data, uint32_t len)
+{
+  DC_LOW();
+
+  while (len--)
+  {
+    WRITE(*data++);
+  }
 
   DC_HIGH();
 }
@@ -328,7 +342,7 @@ void Arduino_ESP8266SPI::writeIndexedPixelsDouble(uint8_t *data, uint16_t *idx, 
   WAIT_SPI_NOT_BUSY;
 }
 
-INLINE void Arduino_ESP8266SPI::WRITE(uint8_t d)
+GFX_INLINE void Arduino_ESP8266SPI::WRITE(uint8_t d)
 {
   SPI1U1 = (7 << SPILMOSI);
   SPI1W0 = d;
@@ -336,7 +350,7 @@ INLINE void Arduino_ESP8266SPI::WRITE(uint8_t d)
   WAIT_SPI_NOT_BUSY;
 }
 
-INLINE void Arduino_ESP8266SPI::WRITE16(uint16_t d)
+GFX_INLINE void Arduino_ESP8266SPI::WRITE16(uint16_t d)
 {
   MSB_16_SET(d, d);
 
@@ -348,17 +362,17 @@ INLINE void Arduino_ESP8266SPI::WRITE16(uint16_t d)
 
 /******** low level bit twiddling **********/
 
-INLINE void Arduino_ESP8266SPI::DC_HIGH(void)
+GFX_INLINE void Arduino_ESP8266SPI::DC_HIGH(void)
 {
   *_dcPort |= _dcPinMaskSet;
 }
 
-INLINE void Arduino_ESP8266SPI::DC_LOW(void)
+GFX_INLINE void Arduino_ESP8266SPI::DC_LOW(void)
 {
   *_dcPort &= _dcPinMaskClr;
 }
 
-INLINE void Arduino_ESP8266SPI::CS_HIGH(void)
+GFX_INLINE void Arduino_ESP8266SPI::CS_HIGH(void)
 {
   if (_cs != GFX_NOT_DEFINED)
   {
@@ -366,7 +380,7 @@ INLINE void Arduino_ESP8266SPI::CS_HIGH(void)
   }
 }
 
-INLINE void Arduino_ESP8266SPI::CS_LOW(void)
+GFX_INLINE void Arduino_ESP8266SPI::CS_LOW(void)
 {
   if (_cs != GFX_NOT_DEFINED)
   {

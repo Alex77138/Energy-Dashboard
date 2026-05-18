@@ -8,9 +8,15 @@ Arduino_ILI9488_3bit::Arduino_ILI9488_3bit(Arduino_DataBus *bus, int8_t rst, uin
 {
 }
 
-void Arduino_ILI9488_3bit::begin(int32_t speed)
+bool Arduino_ILI9488_3bit::begin(int32_t speed)
 {
-  _bus->begin(speed);
+  if (speed != GFX_SKIP_DATABUS_BEGIN)
+  {
+    if (!_bus->begin(speed))
+    {
+      return false;
+    }
+  }
 
   if (_rst != GFX_NOT_DEFINED)
   {
@@ -64,59 +70,36 @@ void Arduino_ILI9488_3bit::begin(int32_t speed)
   _bus->beginWrite();
   _bus->writeC8D8(ILI9488_MADCTL, r);
   _bus->endWrite();
+
+  return true;
 }
 
-void Arduino_ILI9488_3bit::drawBitmap(int16_t x, int16_t y, uint8_t *bitmap, int16_t w, int16_t h, uint16_t color, uint16_t bg)
+void Arduino_ILI9488_3bit::drawBitmap(int16_t, int16_t, uint8_t *, int16_t, int16_t, uint16_t, uint16_t)
 {
   printf("Not Implemented drawBitmap()");
-  UNUSED(x);
-  UNUSED(y);
-  UNUSED(bitmap);
-  UNUSED(w);
-  UNUSED(h);
-  UNUSED(color);
-  UNUSED(bg);
 }
 
-void Arduino_ILI9488_3bit::drawIndexedBitmap(int16_t x, int16_t y, uint8_t *bitmap, uint16_t *color_index, int16_t w, int16_t h)
+void Arduino_ILI9488_3bit::drawIndexedBitmap(int16_t, int16_t, uint8_t *, uint16_t *, int16_t, int16_t, int16_t)
 {
   printf("Not Implemented drawIndexedBitmap()");
-  UNUSED(x);
-  UNUSED(y);
-  UNUSED(bitmap);
-  UNUSED(color_index);
-  UNUSED(w);
-  UNUSED(h);
 }
 
-void Arduino_ILI9488_3bit::draw3bitRGBBitmap(int16_t x, int16_t y, uint8_t *bitmap, int16_t w, int16_t h)
+void Arduino_ILI9488_3bit::draw3bitRGBBitmap(int16_t, int16_t, uint8_t *bitmap, int16_t w, int16_t h)
 {
-  UNUSED(x);
-  UNUSED(y);
   _bus->beginWrite();
   writeAddrWindow(0, 0, w, h);
   _bus->writeBytes(bitmap, w * h / 2);
   _bus->endWrite();
 }
 
-void Arduino_ILI9488_3bit::draw16bitRGBBitmap(int16_t x, int16_t y, uint16_t *bitmap, int16_t w, int16_t h)
+void Arduino_ILI9488_3bit::draw16bitRGBBitmap(int16_t, int16_t, uint16_t *, int16_t, int16_t)
 {
   printf("Not Implemented draw16bitRGBBitmap()");
-  UNUSED(x);
-  UNUSED(y);
-  UNUSED(bitmap);
-  UNUSED(w);
-  UNUSED(h);
 }
 
-void Arduino_ILI9488_3bit::draw24bitRGBBitmap(int16_t x, int16_t y, uint8_t *bitmap, int16_t w, int16_t h)
+void Arduino_ILI9488_3bit::draw24bitRGBBitmap(int16_t, int16_t, uint8_t *, int16_t, int16_t)
 {
   printf("Not Implemented draw24bitRGBBitmap()");
-  UNUSED(x);
-  UNUSED(y);
-  UNUSED(bitmap);
-  UNUSED(w);
-  UNUSED(h);
 }
 
 void Arduino_ILI9488_3bit::invertDisplay(bool i)

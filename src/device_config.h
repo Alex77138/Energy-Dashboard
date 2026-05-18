@@ -4,6 +4,7 @@
 #define MAX_BATTERIES 4
 #define MAX_ROUTERS   4
 #define MAX_HOSTS     8
+#define MAX_SOLAR     4
 
 enum class GridDevice : uint8_t {
     NONE = 0,
@@ -49,56 +50,59 @@ struct HostEntry {
     char ip[64]   = "";
 };
 
+struct SolarConfig {
+    SolarDevice device         = SolarDevice::NONE;
+    char name[32]              = "";
+    char host[64]              = "";
+    char user[32]              = "admin";
+    char pass[32]              = "openDTU42";
+    char serial[64]            = "";
+    uint16_t max_w             = 0;
+    char entity[64]            = "";
+    char energy_entity[64]     = "";
+};
+
 struct BatteryConfig {
-    BatteryDevice device         = BatteryDevice::NONE;
-    char name[32]                = "";  // Nom affiché (ex: "Batterie salon")
-    char host[64]                = "";
-    char power_entity[64]        = "";  // HA : puissance (W)
-    char soc_entity[64]          = "";  // HA : SoC (%)
+    BatteryDevice device        = BatteryDevice::NONE;
+    char name[32]               = "";
+    char host[64]               = "";
+    char power_entity[64]       = "";
+    char soc_entity[64]         = "";
+    char voltage_entity[64]     = "";
+    char current_entity[64]     = "";
 };
 
 struct RouterConfig {
-    RouterDevice device          = RouterDevice::NONE;
-    char name[32]                = "";  // Nom affiché (ex: "Chauffe-eau cuisine")
-    char host[64]                = "";
-    char power_entity[64]        = "";  // HA : puissance routée (W)
-    char energy_entity[64]       = "";  // HA : énergie routée aujourd'hui (kWh) — optionnel
-    char active_entity[64]       = "";  // HA : actif/inactif (binary_sensor)
-    char duration_entity[64]     = "";  // HA : durée équivalente (h décimales)
-    char triac_entity[64]        = "";  // HA : % ouverture triac (0–100)
+    RouterDevice device         = RouterDevice::NONE;
+    char name[32]               = "";
+    char host[64]               = "";
+    char power_entity[64]       = "";
+    char energy_entity[64]      = "";
+    char active_entity[64]      = "";
+    char duration_entity[64]    = "";
+    char triac_entity[64]       = "";
+    char voltage_entity[64]     = "";
+    char current_entity[64]     = "";
 };
 
 struct DeviceConfig {
-    char     device_name[32]   = "Dash Energy";
-    // Noms affichés (personnalisables)
-    char     grid_name[32]     = "R\xc3\xa9seau";   // UTF-8: "Réseau"
-    char     solar_name[32]    = "Solaire";
-    GridDevice  grid_device    = GridDevice::NONE;
-    char     grid_host[64]     = "";
-    SolarDevice solar_device   = SolarDevice::NONE;
-    char     solar_host[64]    = "";
-    char     solar_user[32]    = "admin";
-    char     solar_pass[32]    = "openDTU42";
-    char     solar_serial[64]  = "";    // "SN1/SN2/SN3" ou "ID1/ID2"
-    uint16_t solar_max_w       = 0;    // Wc crête, 0 = jauge désactivée
-    uint8_t  display_rotation  = 0;   // 0 = normal, 2 = 180°
-    // Home Assistant REST API
-    char     ha_token[192]     = "";   // Bearer token
-    char     grid_entity[64]   = "";   // entity_id puissance réseau (W)
-    char     solar_entity[64]  = "";   // entity_id puissance solaire (W)
-    // HA : entités énergie journalière (optionnel — kWh déjà quotidien, bypass baseline)
-    char     grid_energy_entity[64]    = "";
-    char     solar_energy_entity[64]   = "";
-    // Batteries (jusqu'à MAX_BATTERIES sources indépendantes)
+    char     device_name[32]          = "Dash Energy";
+    char     grid_name[32]            = "R\xc3\xa9seau";  // UTF-8: "Réseau"
+    char     solar_name[32]           = "Solaire";
+    GridDevice  grid_device           = GridDevice::NONE;
+    char     grid_host[64]            = "";
+    char     grid_entity[64]          = "";
+    char     grid_energy_entity[64]   = "";
+    char     grid_voltage_entity[64]  = "";
+    char     grid_current_entity[64]  = "";
+    uint8_t  display_rotation         = 0;
+    char     ha_token[192]            = "";
+    SolarConfig solars[MAX_SOLAR];
     BatteryConfig batteries[MAX_BATTERIES];
-    // Routeurs solaires (jusqu'à MAX_ROUTERS sources indépendantes)
     RouterConfig  routers[MAX_ROUTERS];
-    // Bibliothèque d'hôtes (adresses IP réutilisables)
     HostEntry hosts[MAX_HOSTS];
-    // Heure
-    char     timezone[64]        = "CET-1CEST,M3.5.0,M10.5.0/3";  // France par défaut
-    // Mode démo
-    bool     demo_mode           = false;
+    char     timezone[64]             = "CET-1CEST,M3.5.0,M10.5.0/3";
+    bool     demo_mode                = false;
 };
 
 extern DeviceConfig g_cfg;

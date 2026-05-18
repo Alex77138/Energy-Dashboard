@@ -3,6 +3,7 @@
  * https://github.com/adafruit/Adafruit-GFX-Library.git
  */
 #include "Arduino_ST7796.h"
+#include "SPI.h"
 
 Arduino_ST7796::Arduino_ST7796(
     Arduino_DataBus *bus, int8_t rst, uint8_t r,
@@ -12,9 +13,17 @@ Arduino_ST7796::Arduino_ST7796(
 {
 }
 
-void Arduino_ST7796::begin(int32_t speed)
+bool Arduino_ST7796::begin(int32_t speed)
 {
-  Arduino_TFT::begin(speed);
+#if defined(ESP32) || defined(ARDUINO_ARCH_NRF52840)
+  _override_datamode = SPI_MODE3;
+#elif defined(ESP8266)
+  _override_datamode = SPI_MODE2;
+#elif defined(__AVR__)
+  _override_datamode = SPI_MODE0;
+#endif
+
+  return Arduino_TFT::begin(speed);
 }
 
 /**************************************************************************/
@@ -29,22 +38,32 @@ void Arduino_ST7796::setRotation(uint8_t r)
   switch (_rotation)
   {
   case 1:
-    r = ST7796_MADCTL_MV | ST7796_MADCTL_BGR;
+    r = ST7796_MADCTL_MX | ST7796_MADCTL_MV | ST7796_MADCTL_BGR;
     break;
   case 2:
-    r = ST7796_MADCTL_MY | ST7796_MADCTL_BGR;
+    r = ST7796_MADCTL_MX | ST7796_MADCTL_MY | ST7796_MADCTL_BGR;
     break;
   case 3:
+    r = ST7796_MADCTL_MY | ST7796_MADCTL_MV | ST7796_MADCTL_BGR;
+    break;
+  case 4:
+    r = ST7796_MADCTL_MX | ST7796_MADCTL_BGR;
+    break;
+  case 5:
     r = ST7796_MADCTL_MX | ST7796_MADCTL_MY | ST7796_MADCTL_MV | ST7796_MADCTL_BGR;
     break;
+  case 6:
+    r = ST7796_MADCTL_MY | ST7796_MADCTL_BGR;
+    break;
+  case 7:
+    r = ST7796_MADCTL_MV | ST7796_MADCTL_BGR;
+    break;
   default: // case 0:
-    r = ST7796_MADCTL_MX | ST7796_MADCTL_ML | ST7796_MADCTL_BGR | ST7796_MADCTL_MH;
-    r = ST7796_MADCTL_MX | ST7796_MADCTL_BGR;
+    r = ST7796_MADCTL_BGR;
     break;
   }
   _bus->beginWrite();
-  _bus->writeCommand(ST7796_MADCTL);
-  _bus->write(r);
+  _bus->writeC8D8(ST7796_MADCTL, r);
   _bus->endWrite();
 }
 
@@ -62,7 +81,7 @@ void Arduino_ST7796::writeAddrWindow(int16_t x, int16_t y, uint16_t w, uint16_t 
   {
     _currentY = y;
     _currentH = h;
-    x += _yStart;
+    y += _yStart;
     _bus->writeC8D16D16(ST7796_RASET, y, y + h - 1);
   }
 
@@ -71,7 +90,7 @@ void Arduino_ST7796::writeAddrWindow(int16_t x, int16_t y, uint16_t w, uint16_t 
 
 void Arduino_ST7796::invertDisplay(bool i)
 {
-  _bus->sendCommand(_ips ? (i ? ST7796_INVOFF : ST7796_INVON) : (i ? ST7796_INVON : ST7796_INVOFF));
+  _bus->sendCommand((_ips ^ i) ? ST7796_INVON : ST7796_INVOFF);
 }
 
 void Arduino_ST7796::displayOn(void)
@@ -109,8 +128,5 @@ void Arduino_ST7796::tftInit()
 
   _bus->batchOperation(st7796_init_operations, sizeof(st7796_init_operations));
 
-  if (_ips)
-  {
-    _bus->sendCommand(ST7796_INVON);
-  }
+  invertDisplay(false);
 }

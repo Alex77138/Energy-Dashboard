@@ -11,9 +11,9 @@ Arduino_ILI9331::Arduino_ILI9331(Arduino_DataBus *bus, int8_t rst, uint8_t r, bo
 {
 }
 
-void Arduino_ILI9331::begin(int32_t speed)
+bool Arduino_ILI9331::begin(int32_t speed)
 {
-  Arduino_TFT::begin(speed);
+  return Arduino_TFT::begin(speed);
 }
 
 /**************************************************************************/
@@ -134,10 +134,6 @@ void Arduino_ILI9331::tftInit()
   }
 
   _bus->batchOperation(ili9331_init_operations, sizeof(ili9331_init_operations));
-  if (_ips)
-  {
-    _bus->beginWrite();
-    _bus->writeC16D16(ILI9331_GSC2, _ips); // Invert display
-    _bus->endWrite();
-  }
+
+  invertDisplay(false);
 }

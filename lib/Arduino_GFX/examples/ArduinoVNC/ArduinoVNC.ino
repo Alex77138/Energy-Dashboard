@@ -41,8 +41,12 @@ const char *VNC_PASSWORD = "PleaseInputYourPasswordHere";
  * Defalult pin list for non display dev kit:
  * Arduino Nano, Micro and more: CS:  9, DC:  8, RST:  7, BL:  6, SCK: 13, MOSI: 11, MISO: 12
  * ESP32 various dev board     : CS:  5, DC: 27, RST: 33, BL: 22, SCK: 18, MOSI: 23, MISO: nil
- * ESP32-C3 various dev board  : CS:  7, DC:  2, RST:  1, BL:  3, SCK:  4, MOSI:  6, MISO: nil
- * ESP32-S2 various dev board  : CS: 34, DC: 35, RST: 33, BL: 21, SCK: 36, MOSI: 35, MISO: nil
+ * ESP32-C2/3 various dev board: CS:  7, DC:  2, RST:  1, BL:  3, SCK:  4, MOSI:  6, MISO: nil
+ * ESP32-C5 various dev board  : CS: 23, DC: 24, RST: 25, BL: 26, SCK: 10, MOSI:  8, MISO: nil
+ * ESP32-C6 various dev board  : CS: 18, DC: 22, RST: 23, BL: 15, SCK: 21, MOSI: 19, MISO: nil
+ * ESP32-H2 various dev board  : CS:  0, DC: 12, RST:  8, BL: 22, SCK: 10, MOSI: 25, MISO: nil
+ * ESP32-P4 various dev board  : CS: 26, DC: 27, RST: 25, BL: 24, SCK: 36, MOSI: 32, MISO: nil
+ * ESP32-S2 various dev board  : CS: 34, DC: 38, RST: 33, BL: 21, SCK: 36, MOSI: 35, MISO: nil
  * ESP32-S3 various dev board  : CS: 40, DC: 41, RST: 42, BL: 48, SCK: 36, MOSI: 35, MISO: nil
  * ESP8266 various dev board   : CS: 15, DC:  4, RST:  2, BL:  5, SCK: 14, MOSI: 13, MISO: 12
  * Raspberry Pi Pico dev board : CS: 17, DC: 27, RST: 26, BL: 28, SCK: 18, MOSI: 19, MISO: 16
@@ -91,9 +95,9 @@ arduinoVNC vnc = arduinoVNC(vnc_gfx);
 
 void TFTnoWifi(void)
 {
-  gfx->fillScreen(BLACK);
+  gfx->fillScreen(RGB565_BLACK);
   gfx->setCursor(0, ((gfx->height() / 2) - (5 * 8)));
-  gfx->setTextColor(RED);
+  gfx->setTextColor(RGB565_RED);
   gfx->setTextSize(5);
   gfx->println("NO WIFI!");
   gfx->setTextSize(2);
@@ -102,9 +106,9 @@ void TFTnoWifi(void)
 
 void TFTnoVNC(void)
 {
-  gfx->fillScreen(BLACK);
+  gfx->fillScreen(RGB565_BLACK);
   gfx->setCursor(0, ((gfx->height() / 2) - (4 * 8)));
-  gfx->setTextColor(GREEN);
+  gfx->setTextColor(RGB565_LIME);
   gfx->setTextSize(4);
   gfx->println("connect VNC");
   gfx->setTextSize(2);
@@ -116,8 +120,10 @@ void TFTnoVNC(void)
 
 void handle_touch()
 {
-  if (touch_has_signal()) {
-    if (touch_touched()) {
+  if (touch_has_signal())
+  {
+    if (touch_touched())
+    {
       vnc.mouseEvent(touch_last_x, touch_last_y, 0b001);
     }
     else if (touch_released())
@@ -127,35 +133,38 @@ void handle_touch()
   }
 }
 
-void handle_keyboard() {
+void handle_keyboard()
+{
   int key = keyboard_get_key();
-  if (key > 0) {
+  if (key > 0)
+  {
     // Serial.println(key);
-    switch (key) {
-      case 8:
-        key = 0xff08;  // BackSpace
-        break;
-      case 9:
-        key = 0xff09;  // Tab
-        break;
-      case 13:
-        key = 0xff0d;  // Return or Enter
-        break;
-      case 27:
-        key = 0xff1b;  // Escape
-        break;
-      case 180:
-        key = 0xff51;  // Left
-        break;
-      case 181:
-        key = 0xff52;  // Up
-        break;
-      case 182:
-        key = 0xff54;  // Down
-        break;
-      case 183:
-        key = 0xff53;  // Right
-        break;
+    switch (key)
+    {
+    case 8:
+      key = 0xff08; // BackSpace
+      break;
+    case 9:
+      key = 0xff09; // Tab
+      break;
+    case 13:
+      key = 0xff0d; // Return or Enter
+      break;
+    case 27:
+      key = 0xff1b; // Escape
+      break;
+    case 180:
+      key = 0xff51; // Left
+      break;
+    case 181:
+      key = 0xff52; // Up
+      break;
+    case 182:
+      key = 0xff54; // Down
+      break;
+    case 183:
+      key = 0xff53; // Right
+      break;
     }
     vnc.keyEvent(key, 0b001);
     vnc.keyEvent(key, 0b000);
@@ -164,25 +173,33 @@ void handle_keyboard() {
 
 void setup(void)
 {
-  Serial.begin(115200);
-  // while (!Serial);
-  // Serial.setDebugOutput(true);
-  Serial.println("Arduino VNC");
+#ifdef DEV_DEVICE_INIT
+  DEV_DEVICE_INIT();
+#endif
 
-  // Init touch device
-  touch_init();
+  Serial.begin(115200);
+  // Serial.setDebugOutput(true);
+  // while(!Serial);
+  Serial.println("Arduino_GFX VNC example");
 
   // Init keyboard device
   keyboard_init();
 
   Serial.println("Init display");
-  gfx->begin();
-  gfx->fillScreen(BLACK);
+  if (!gfx->begin())
+  {
+    Serial.println("gfx->begin() failed!");
+  }
+  gfx->fillScreen(RGB565_BLACK);
 
 #ifdef GFX_BL
   pinMode(GFX_BL, OUTPUT);
   digitalWrite(GFX_BL, HIGH);
 #endif
+
+  // Init touch device
+  touch_init(gfx->width(), gfx->height(), gfx->getRotation());
+
   TFTnoWifi();
 
   Serial.println("Init WiFi");

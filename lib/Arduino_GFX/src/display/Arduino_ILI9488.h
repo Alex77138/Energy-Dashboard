@@ -5,8 +5,6 @@
 #ifndef _ARDUINO_ILI9488_H_
 #define _ARDUINO_ILI9488_H_
 
-#include <Arduino.h>
-#include <Print.h>
 #include "../Arduino_GFX.h"
 #include "../Arduino_TFT.h"
 
@@ -105,7 +103,7 @@ class Arduino_ILI9488 : public Arduino_TFT
 public:
   Arduino_ILI9488(Arduino_DataBus *bus, int8_t rst = GFX_NOT_DEFINED, uint8_t r = 0, bool ips = false);
 
-  void begin(int32_t speed = GFX_NOT_DEFINED) override;
+  bool begin(int32_t speed = GFX_NOT_DEFINED) override;
 
   void setRotation(uint8_t r) override;
 

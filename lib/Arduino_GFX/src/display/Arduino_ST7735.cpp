@@ -14,7 +14,7 @@ Arduino_ST7735::Arduino_ST7735(
 {
 }
 
-void Arduino_ST7735::begin(int32_t speed)
+bool Arduino_ST7735::begin(int32_t speed)
 {
 #if defined(ESP8266) || defined(ESP32)
   if (speed == GFX_NOT_DEFINED)
@@ -29,7 +29,8 @@ void Arduino_ST7735::begin(int32_t speed)
   }
 #endif
   _override_datamode = SPI_MODE0; // always use SPI_MODE0
-  Arduino_TFT::begin(speed);
+
+  return Arduino_TFT::begin(speed);
 }
 
 // Companion code to the above tables.  Reads and issues
@@ -55,10 +56,7 @@ void Arduino_ST7735::tftInit()
 
   _bus->batchOperation(st7735_init_operations, sizeof(st7735_init_operations));
 
-  if (_ips)
-  {
-    _bus->sendCommand(ST7735_INVON);
-  }
+  invertDisplay(false);
 }
 
 void Arduino_ST7735::writeAddrWindow(int16_t x, int16_t y, uint16_t w, uint16_t h)
@@ -118,14 +116,13 @@ void Arduino_ST7735::setRotation(uint8_t r)
     break;
   }
   _bus->beginWrite();
-  _bus->writeCommand(ST7735_MADCTL);
-  _bus->write(r);
+  _bus->writeC8D8(ST7735_MADCTL, r);
   _bus->endWrite();
 }
 
 void Arduino_ST7735::invertDisplay(bool i)
 {
-  _bus->sendCommand(_ips ? (i ? ST7735_INVOFF : ST7735_INVON) : (i ? ST7735_INVON : ST7735_INVOFF));
+  _bus->sendCommand((_ips ^ i) ? ST7735_INVON : ST7735_INVOFF);
 }
 
 void Arduino_ST7735::displayOn(void)

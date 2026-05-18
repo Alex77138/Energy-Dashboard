@@ -11,7 +11,7 @@ Arduino_mbedSPI::Arduino_mbedSPI(int8_t dc, int8_t cs /* = GFX_NOT_DEFINED */)
 {
 }
 
-void Arduino_mbedSPI::begin(int32_t speed, int8_t dataMode)
+bool Arduino_mbedSPI::begin(int32_t speed, int8_t dataMode)
 {
   _speed = (speed == GFX_NOT_DEFINED) ? SPI_DEFAULT_FREQ : speed;
   _dataMode = (dataMode == GFX_NOT_DEFINED) ? SPI_MODE2 : dataMode;
@@ -37,6 +37,8 @@ void Arduino_mbedSPI::begin(int32_t speed, int8_t dataMode)
     _dataMode = SPI_MODE0;
   }
   _dev = new mbed::SPI((PinName)SPI_MOSI, (PinName)SPI_MISO, (PinName)SPI_SCK);
+
+  return true;
 }
 
 void Arduino_mbedSPI::beginWrite()
@@ -74,6 +76,18 @@ void Arduino_mbedSPI::writeCommand16(uint16_t c)
   DC_HIGH();
 }
 
+void Arduino_mbedSPI::writeCommandBytes(uint8_t *data, uint32_t len)
+{
+  DC_LOW();
+
+  while (len--)
+  {
+    WRITE(*data++);
+  }
+
+  DC_HIGH();
+}
+
 void Arduino_mbedSPI::write(uint8_t d)
 {
   WRITE(d);
@@ -87,7 +101,7 @@ void Arduino_mbedSPI::write16(uint16_t d)
 void Arduino_mbedSPI::writeRepeat(uint16_t p, uint32_t len)
 {
   MSB_16_SET(p, p);
-  uint32_t bufLen = (len < SPI_MAX_PIXELS_AT_ONCE) ? len : SPI_MAX_PIXELS_AT_ONCE;
+  uint32_t bufLen = (len < MBEDSPI_MAX_PIXELS_AT_ONCE) ? len : MBEDSPI_MAX_PIXELS_AT_ONCE;
   uint32_t xferLen;
   for (uint32_t i = 0; i < bufLen; i++)
   {
@@ -117,7 +131,7 @@ void Arduino_mbedSPI::writePixels(uint16_t *data, uint32_t len)
   } t;
   while (len)
   {
-    xferLen = (len < SPI_MAX_PIXELS_AT_ONCE) ? len : SPI_MAX_PIXELS_AT_ONCE;
+    xferLen = (len < MBEDSPI_MAX_PIXELS_AT_ONCE) ? len : MBEDSPI_MAX_PIXELS_AT_ONCE;
     p = _buffer;
     for (uint32_t i = 0; i < xferLen; i++)
     {
@@ -172,46 +186,35 @@ void Arduino_mbedSPI::writeBytes(uint8_t *data, uint32_t len)
   WRITEBUF(data, len);
 }
 
-void Arduino_mbedSPI::writePattern(uint8_t *data, uint8_t len, uint32_t repeat)
-{
-  while (repeat--)
-  {
-    for (uint8_t i = 0; i < len; i++)
-    {
-      write(data[i]);
-    }
-  }
-}
-
-INLINE void Arduino_mbedSPI::WRITE(uint8_t d)
+GFX_INLINE void Arduino_mbedSPI::WRITE(uint8_t d)
 {
   _dev->write((const char *)&d, 1, NULL, 0);
 }
 
-INLINE void Arduino_mbedSPI::WRITE16(uint16_t d)
+GFX_INLINE void Arduino_mbedSPI::WRITE16(uint16_t d)
 {
   MSB_16_SET(d, d);
   _dev->write((const char *)&d, 2, NULL, 0);
 }
 
-INLINE void Arduino_mbedSPI::WRITEBUF(uint8_t *buf, size_t count)
+GFX_INLINE void Arduino_mbedSPI::WRITEBUF(uint8_t *buf, size_t count)
 {
   _dev->write((const char *)buf, count, NULL, 0);
 }
 
 /******** low level bit twiddling **********/
 
-INLINE void Arduino_mbedSPI::DC_HIGH(void)
+GFX_INLINE void Arduino_mbedSPI::DC_HIGH(void)
 {
   *_dcPortSet = _dcPinMask;
 }
 
-INLINE void Arduino_mbedSPI::DC_LOW(void)
+GFX_INLINE void Arduino_mbedSPI::DC_LOW(void)
 {
   *_dcPortClr = _dcPinMask;
 }
 
-INLINE void Arduino_mbedSPI::CS_HIGH(void)
+GFX_INLINE void Arduino_mbedSPI::CS_HIGH(void)
 {
   if (_cs != GFX_NOT_DEFINED)
   {
@@ -219,7 +222,7 @@ INLINE void Arduino_mbedSPI::CS_HIGH(void)
   }
 }
 
-INLINE void Arduino_mbedSPI::CS_LOW(void)
+GFX_INLINE void Arduino_mbedSPI::CS_LOW(void)
 {
   if (_cs != GFX_NOT_DEFINED)
   {

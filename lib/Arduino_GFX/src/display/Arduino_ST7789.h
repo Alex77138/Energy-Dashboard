@@ -1,13 +1,11 @@
+#pragma once
+
 /*
  * start rewrite from:
  * https://github.com/adafruit/Adafruit-GFX-Library.git
  * https://github.com/ananevilya/Arduino-ST7789-Library.git
  */
-#ifndef _ARDUINO_ST7789_H_
-#define _ARDUINO_ST7789_H_
 
-#include <Arduino.h>
-#include <Print.h>
 #include "../Arduino_GFX.h"
 #include "../Arduino_TFT.h"
 
@@ -64,8 +62,11 @@ static const uint8_t st7789_init_operations[] = {
     WRITE_C8_D8, ST7789_COLMOD, 0x55, // 3: Set color mode, 16-bit color
     WRITE_C8_D8, 0x36, 0x00,
 
-    WRITE_COMMAND_8, 0xB2,
-    WRITE_BYTES, 5, 0x0C, 0x0C, 0x00, 0x33, 0x33,
+    WRITE_C8_BYTES, 0xB0, 2,
+    0x00, 0xF0, // 0xF0 MSB first, 0xF8 LSB first
+
+    WRITE_C8_BYTES, 0xB2, 5,
+    0x0C, 0x0C, 0x00, 0x33, 0x33,
 
     WRITE_C8_D8, 0xB7, 0x35,
     WRITE_C8_D8, 0xBB, 0x19,
@@ -77,8 +78,7 @@ static const uint8_t st7789_init_operations[] = {
 
     WRITE_C8_D16, 0xD0, 0xA4, 0xA1,
 
-    WRITE_COMMAND_8, 0xE0,
-    WRITE_BYTES, 14,
+    WRITE_C8_BYTES, 0xE0, 14,
     0b11110000, // V63P3, V63P2, V63P1, V63P0,  V0P3,  V0P2,  V0P1,  V0P0
     0b00001001, //     0,     0,  V1P5,  V1P4,  V1P3,  V1P2,  V1P1,  V1P0
     0b00010011, //     0,     0,  V2P5,  V2P4,  V2P3,  V2P2,  V2P1,  V2P0
@@ -94,8 +94,7 @@ static const uint8_t st7789_init_operations[] = {
     0b00011101, //     0,     0, V61P5, V61P4, V61P3, V61P2, V61P1, V61P0
     0b00100001, //     0,     0, V62P5, V62P4, V62P3, V62P2, V62P1, V62P0
 
-    WRITE_COMMAND_8, 0XE1,
-    WRITE_BYTES, 14,
+    WRITE_C8_BYTES, 0XE1, 14,
     0b11110000, // V63P3, V63P2, V63P1, V63P0,  V0P3,  V0P2,  V0P1,  V0P0
     0b00001001, //     0,     0,  V1P5,  V1P4,  V1P3,  V1P2,  V1P1,  V1P0
     0b00010011, //     0,     0,  V2P5,  V2P4,  V2P3,  V2P2,  V2P1,  V2P0
@@ -128,7 +127,7 @@ public:
       bool ips = false, int16_t w = ST7789_TFTWIDTH, int16_t h = ST7789_TFTHEIGHT,
       uint8_t col_offset1 = 0, uint8_t row_offset1 = 0, uint8_t col_offset2 = 0, uint8_t row_offset2 = 0);
 
-  void begin(int32_t speed = GFX_NOT_DEFINED) override;
+  bool begin(int32_t speed = GFX_NOT_DEFINED) override;
 
   void setRotation(uint8_t r) override;
 
@@ -143,5 +142,3 @@ protected:
 
 private:
 };
-
-#endif

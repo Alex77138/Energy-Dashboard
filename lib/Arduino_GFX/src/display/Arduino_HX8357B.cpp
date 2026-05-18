@@ -5,9 +5,9 @@ Arduino_HX8357B::Arduino_HX8357B(Arduino_DataBus *bus, int8_t rst, uint8_t r, bo
 {
 }
 
-void Arduino_HX8357B::begin(int32_t speed)
+bool Arduino_HX8357B::begin(int32_t speed)
 {
-  Arduino_TFT::begin(speed);
+  return Arduino_TFT::begin(speed);
 }
 
 /**************************************************************************/
@@ -98,8 +98,5 @@ void Arduino_HX8357B::tftInit()
 
   _bus->batchOperation(hx8357b_init_operations, sizeof(hx8357b_init_operations));
 
-  if (_ips)
-  {
-    _bus->sendCommand(HX8357B_ENTER_INVERSION_MODE);
-  }
+  invertDisplay(false);
 }

@@ -12,9 +12,9 @@ Arduino_SEPS525::Arduino_SEPS525(
 {
 }
 
-void Arduino_SEPS525::begin(int32_t speed)
+bool Arduino_SEPS525::begin(int32_t speed)
 {
-  Arduino_TFT::begin(speed);
+  return Arduino_TFT::begin(speed);
 }
 
 // Companion code to the above tables.  Reads and issues
@@ -199,10 +199,9 @@ void Arduino_SEPS525::setRotation(uint8_t r)
   }
 }
 
-void Arduino_SEPS525::invertDisplay(bool i)
+void Arduino_SEPS525::invertDisplay(bool)
 {
   // Not Implemented
-  UNUSED(i);
 }
 
 void Arduino_SEPS525::displayOn(void)

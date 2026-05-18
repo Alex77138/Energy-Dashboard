@@ -4,39 +4,45 @@
  */
 #include "Arduino_ESP32SPI.h"
 
-#if defined(ESP32)
-
-#define WAIT_SPI_NOT_BUSY while (_spi->dev->cmd.usr)
+#if defined(ESP32) && (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32C2 || CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5)
 
 struct spi_struct_t
 {
-  spi_dev_t *dev;
+  volatile spi_dev_t *dev;
 #if !CONFIG_DISABLE_HAL_LOCKS
-  xSemaphoreHandle lock;
+  SemaphoreHandle_t lock;
 #endif
   uint8_t num;
+  int8_t sck;
+  int8_t miso;
+  int8_t mosi;
+  int8_t ss;
+  bool ss_invert;
 };
 
 #if CONFIG_DISABLE_HAL_LOCKS
 #define SPI_MUTEX_LOCK()
 #define SPI_MUTEX_UNLOCK()
-
+// clang-format off
 static spi_t _spi_bus_array[] = {
-#if CONFIG_IDF_TARGET_ESP32S2
-    {(volatile spi_dev_t *)(DR_REG_SPI1_BASE), 0},
-    {(volatile spi_dev_t *)(DR_REG_SPI2_BASE), 1},
-    {(volatile spi_dev_t *)(DR_REG_SPI3_BASE), 2}
-#elif CONFIG_IDF_TARGET_ESP32S3
-    {(volatile spi_dev_t *)(DR_REG_SPI2_BASE), 0},
-    {(volatile spi_dev_t *)(DR_REG_SPI3_BASE), 1}
+#if CONFIG_IDF_TARGET_ESP32S2 ||CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32P4
+  {(volatile spi_dev_t *)(DR_REG_SPI2_BASE), 0, -1, -1, -1, -1, false},
+  {(volatile spi_dev_t *)(DR_REG_SPI3_BASE), 1, -1, -1, -1, -1, false}
+#elif CONFIG_IDF_TARGET_ESP32C2
+  {(volatile spi_dev_t *)(DR_REG_SPI2_BASE), 0, -1, -1, -1, -1, false}
+#elif CONFIG_IDF_TARGET_ESP32C3
+  {(volatile spi_dev_t *)(DR_REG_SPI2_BASE), 0, -1, -1, -1, -1, false}
+#elif CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32C5
+  {(spi_dev_t *)(DR_REG_SPI2_BASE), 0, -1, -1, -1, -1, false}
 #else
-    {(volatile spi_dev_t *)(DR_REG_SPI0_BASE), 0},
-    {(volatile spi_dev_t *)(DR_REG_SPI1_BASE), 1},
-    {(volatile spi_dev_t *)(DR_REG_SPI2_BASE), 2},
-    {(volatile spi_dev_t *)(DR_REG_SPI3_BASE), 3}
+  {(volatile spi_dev_t *)(DR_REG_SPI0_BASE), 0, -1, -1, -1, -1, false},
+  {(volatile spi_dev_t *)(DR_REG_SPI1_BASE), 1, -1, -1, -1, -1, false},
+  {(volatile spi_dev_t *)(DR_REG_SPI2_BASE), 2, -1, -1, -1, -1, false},
+  {(volatile spi_dev_t *)(DR_REG_SPI3_BASE), 3, -1, -1, -1, -1, false}
 #endif
 };
-#else // !CONFIG_DISABLE_HAL_LOCKS
+// clang-format on
+#else
 #define SPI_MUTEX_LOCK() \
   do                     \
   {                      \
@@ -44,26 +50,31 @@ static spi_t _spi_bus_array[] = {
 #define SPI_MUTEX_UNLOCK() xSemaphoreGive(_spi->lock)
 
 static spi_t _spi_bus_array[] = {
-#if CONFIG_IDF_TARGET_ESP32S2
-    {(volatile spi_dev_t *)(DR_REG_SPI1_BASE), NULL, 0},
-    {(volatile spi_dev_t *)(DR_REG_SPI2_BASE), NULL, 1},
-    {(volatile spi_dev_t *)(DR_REG_SPI3_BASE), NULL, 2}
-#elif CONFIG_IDF_TARGET_ESP32S3
-    {(volatile spi_dev_t *)(DR_REG_SPI2_BASE), NULL, 0},
-    {(volatile spi_dev_t *)(DR_REG_SPI3_BASE), NULL, 1}
+#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32P4
+    {(volatile spi_dev_t *)(DR_REG_SPI2_BASE), NULL, 0, -1, -1, -1, -1, false},
+    {(volatile spi_dev_t *)(DR_REG_SPI3_BASE), NULL, 1, -1, -1, -1, -1, false}
+#elif CONFIG_IDF_TARGET_ESP32C2
+    {(volatile spi_dev_t *)(DR_REG_SPI2_BASE), NULL, 0, -1, -1, -1, -1, false}
 #elif CONFIG_IDF_TARGET_ESP32C3
-    {(volatile spi_dev_t *)(&GPSPI2), NULL, FSPI}
+    {(volatile spi_dev_t *)(DR_REG_SPI2_BASE), NULL, 0, -1, -1, -1, -1, false}
+#elif CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32C5
+    {(spi_dev_t *)(DR_REG_SPI2_BASE), NULL, 0, -1, -1, -1, -1, false}
 #else
-    {(volatile spi_dev_t *)(DR_REG_SPI0_BASE), NULL, 0},
-    {(volatile spi_dev_t *)(DR_REG_SPI1_BASE), NULL, 1},
-    {(volatile spi_dev_t *)(DR_REG_SPI2_BASE), NULL, 2},
-    {(volatile spi_dev_t *)(DR_REG_SPI3_BASE), NULL, 3}
+    {(volatile spi_dev_t *)(DR_REG_SPI0_BASE), NULL, 0, -1, -1, -1, -1, false},
+    {(volatile spi_dev_t *)(DR_REG_SPI1_BASE), NULL, 1, -1, -1, -1, -1, false},
+    {(volatile spi_dev_t *)(DR_REG_SPI2_BASE), NULL, 2, -1, -1, -1, -1, false},
+    {(volatile spi_dev_t *)(DR_REG_SPI3_BASE), NULL, 3, -1, -1, -1, -1, false}
 #endif
 };
-#endif // CONFIG_DISABLE_HAL_LOCKS
+#endif
 
-Arduino_ESP32SPI::Arduino_ESP32SPI(int8_t dc /* = GFX_NOT_DEFINED */, int8_t cs /* = GFX_NOT_DEFINED */, int8_t sck /* = GFX_NOT_DEFINED */, int8_t mosi /* = GFX_NOT_DEFINED */, int8_t miso /* = GFX_NOT_DEFINED */, uint8_t spi_num /* = VSPI for ESP32, FSPI for S2 & C3 */, bool is_shared_interface /* = true */)
-    : _dc(dc), _spi_num(spi_num), _is_shared_interface(is_shared_interface)
+/**
+ * @brief Arduino_ESP32SPI
+ *
+ */
+Arduino_ESP32SPI::Arduino_ESP32SPI(
+    int8_t dc /* = GFX_NOT_DEFINED */, int8_t cs /* = GFX_NOT_DEFINED */, int8_t sck /* = GFX_NOT_DEFINED */, int8_t mosi /* = GFX_NOT_DEFINED */, int8_t miso /* = GFX_NOT_DEFINED */, uint8_t _spi_num /* = VSPI for ESP32, HSPI for S2 & S3, FSPI for C3 */, bool is_shared_interface /* = true */)
+    : _dc(dc), _spi_num(_spi_num), _is_shared_interface(is_shared_interface)
 {
 #if CONFIG_IDF_TARGET_ESP32
   if (
@@ -105,11 +116,19 @@ static void _on_apb_change(void *arg, apb_change_ev_t ev_type, uint32_t old_apb,
   if (ev_type == APB_BEFORE_CHANGE)
   {
     SPI_MUTEX_LOCK();
-    WAIT_SPI_NOT_BUSY;
+    while (_spi->dev->cmd.usr)
+      ;
   }
   else
   {
+    // Fix for ESP32 Arduino core 3.3.6+ compatibility
+    // Ref: https://github.com/espressif/arduino-esp32/pull/12265
+    // Changed: spiFrequencyToClockDiv(freq) -> spiFrequencyToClockDiv(spi, freq)
+#if defined(ESP_ARDUINO_VERSION) && (ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 3, 6))
+    _spi->dev->clock.val = spiFrequencyToClockDiv(_spi, old_apb / ((_spi->dev->clock.clkdiv_pre + 1) * (_spi->dev->clock.clkcnt_n + 1)));
+#else
     _spi->dev->clock.val = spiFrequencyToClockDiv(old_apb / ((_spi->dev->clock.clkdiv_pre + 1) * (_spi->dev->clock.clkcnt_n + 1)));
+#endif
     SPI_MUTEX_UNLOCK();
   }
 }
@@ -120,10 +139,10 @@ static void spiInitBus(spi_t *spi)
   spi->dev->slave.trans_done = 0;
 #endif
   spi->dev->slave.val = 0;
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32C3
-  spi->dev->misc.val = 0;
-#else
+#if CONFIG_IDF_TARGET_ESP32
   spi->dev->pin.val = 0;
+#else
+  spi->dev->misc.val = 0;
 #endif
   spi->dev->user.val = 0;
   spi->dev->user1.val = 0;
@@ -140,15 +159,30 @@ static void spiInitBus(spi_t *spi)
   spi->dev->clock.val = 0;
 }
 
-void Arduino_ESP32SPI::begin(int32_t speed, int8_t dataMode)
+/**
+ * @brief begin
+ *
+ * @param speed
+ * @param dataMode
+ * @return true
+ * @return false
+ */
+bool Arduino_ESP32SPI::begin(int32_t speed, int8_t dataMode)
 {
   // set SPI parameters
   _speed = (speed == GFX_NOT_DEFINED) ? SPI_DEFAULT_FREQ : speed;
   _dataMode = (dataMode == GFX_NOT_DEFINED) ? SPI_MODE0 : dataMode;
-;
+
   if (!_div)
   {
+    // Fix for ESP32 Arduino core 3.3.6+ compatibility
+    // Ref: https://github.com/espressif/arduino-esp32/pull/12265
+    // Changed: spiFrequencyToClockDiv(freq) -> spiFrequencyToClockDiv(spi, freq)
+#if defined(ESP_ARDUINO_VERSION) && (ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 3, 6))
+    _div = spiFrequencyToClockDiv(&_spi_bus_array[_spi_num], _speed);
+#else
     _div = spiFrequencyToClockDiv(_speed);
+#endif
   }
 
   // set pin mode
@@ -163,38 +197,50 @@ void Arduino_ESP32SPI::begin(int32_t speed, int8_t dataMode)
     digitalWrite(_cs, HIGH); // disable chip select
   }
 
-#if (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3)
+#if (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5)
   // set fastIO variables
   if (_dc >= 32)
   {
     _dcPinMask = digitalPinToBitMask(_dc);
-    _dcPortSet = (PORTreg_t)&GPIO.out1_w1ts.val;
-    _dcPortClr = (PORTreg_t)&GPIO.out1_w1tc.val;
+    _dcPortSet = (PORTreg_t)GPIO_OUT1_W1TS_REG;
+    _dcPortClr = (PORTreg_t)GPIO_OUT1_W1TC_REG;
   }
-  else
-#endif
-      if (_dc != GFX_NOT_DEFINED)
+  else if (_dc != GFX_NOT_DEFINED)
   {
     _dcPinMask = digitalPinToBitMask(_dc);
-    _dcPortSet = (PORTreg_t)&GPIO.out_w1ts;
-    _dcPortClr = (PORTreg_t)&GPIO.out_w1tc;
+    _dcPortSet = (PORTreg_t)GPIO_OUT_W1TS_REG;
+    _dcPortClr = (PORTreg_t)GPIO_OUT_W1TC_REG;
   }
+#else
+  if (_dc != GFX_NOT_DEFINED)
+  {
+    _dcPinMask = digitalPinToBitMask(_dc);
+    _dcPortSet = (PORTreg_t)GPIO_OUT_W1TS_REG;
+    _dcPortClr = (PORTreg_t)GPIO_OUT_W1TC_REG;
+  }
+#endif
 
-#if (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3)
+#if (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5)
   if (_cs >= 32)
   {
     _csPinMask = digitalPinToBitMask(_cs);
-    _csPortSet = (PORTreg_t)&GPIO.out1_w1ts.val;
-    _csPortClr = (PORTreg_t)&GPIO.out1_w1tc.val;
+    _csPortSet = (PORTreg_t)GPIO_OUT1_W1TS_REG;
+    _csPortClr = (PORTreg_t)GPIO_OUT1_W1TC_REG;
   }
-  else
-#endif
-      if (_cs != GFX_NOT_DEFINED)
+  else if (_cs != GFX_NOT_DEFINED)
   {
     _csPinMask = digitalPinToBitMask(_cs);
-    _csPortSet = (PORTreg_t)&GPIO.out_w1ts;
-    _csPortClr = (PORTreg_t)&GPIO.out_w1tc;
+    _csPortSet = (PORTreg_t)GPIO_OUT_W1TS_REG;
+    _csPortClr = (PORTreg_t)GPIO_OUT_W1TC_REG;
   }
+#else
+  if (_cs != GFX_NOT_DEFINED)
+  {
+    _csPinMask = digitalPinToBitMask(_cs);
+    _csPortSet = (PORTreg_t)GPIO_OUT_W1TS_REG;
+    _csPortClr = (PORTreg_t)GPIO_OUT_W1TC_REG;
+  }
+#endif
 
   // SPI.begin(_sck, _miso, _mosi);
   // _spi = spiStartBus(_spi_num, _div, SPI_MODE0, SPI_MSBFIRST);
@@ -218,21 +264,16 @@ void Arduino_ESP32SPI::begin(int32_t speed, int8_t dataMode)
     DPORT_SET_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_SPI3_CLK_EN);
     DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_SPI3_RST);
   }
-  else
-  {
-    DPORT_SET_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_SPI01_CLK_EN);
-    DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_SPI01_RST);
-  }
 #elif CONFIG_IDF_TARGET_ESP32S3
   if (_spi_num == FSPI)
   {
-    periph_module_reset(PERIPH_SPI2_MODULE);
-    periph_module_enable(PERIPH_SPI2_MODULE);
+    periph_ll_reset(PERIPH_SPI2_MODULE);
+    periph_ll_enable_clk_clear_rst(PERIPH_SPI2_MODULE);
   }
   else if (_spi_num == HSPI)
   {
-    periph_module_reset(PERIPH_SPI3_MODULE);
-    periph_module_enable(PERIPH_SPI3_MODULE);
+    periph_ll_reset(PERIPH_SPI3_MODULE);
+    periph_ll_enable_clk_clear_rst(PERIPH_SPI3_MODULE);
   }
 #elif CONFIG_IDF_TARGET_ESP32
   if (_spi_num == HSPI)
@@ -250,9 +291,43 @@ void Arduino_ESP32SPI::begin(int32_t speed, int8_t dataMode)
     DPORT_SET_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_SPI01_CLK_EN);
     DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_SPI01_RST);
   }
-#elif CONFIG_IDF_TARGET_ESP32C3
-  periph_module_reset(PERIPH_SPI2_MODULE);
-  periph_module_enable(PERIPH_SPI2_MODULE);
+#elif CONFIG_IDF_TARGET_ESP32P4
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
+  if (_spi_num == FSPI)
+  {
+    PERIPH_RCC_ACQUIRE_ATOMIC(PERIPH_GPSPI2_MODULE, ref_count)
+    {
+      if (ref_count == 0)
+      {
+        PERIPH_RCC_ATOMIC()
+        {
+          spi_ll_enable_bus_clock(SPI2_HOST, true);
+          spi_ll_reset_register(SPI2_HOST);
+          spi_ll_enable_clock(SPI2_HOST, true);
+        }
+      }
+    }
+  }
+  else if (_spi_num == HSPI)
+  {
+    PERIPH_RCC_ACQUIRE_ATOMIC(PERIPH_GPSPI3_MODULE, ref_count)
+    {
+      if (ref_count == 0)
+      {
+        PERIPH_RCC_ATOMIC()
+        {
+          spi_ll_enable_bus_clock(SPI3_HOST, true);
+          spi_ll_reset_register(SPI3_HOST);
+          spi_ll_enable_clock(SPI3_HOST, true);
+        }
+      }
+    }
+  }
+#pragma GCC diagnostic pop
+#elif defined(__PERIPH_CTRL_ALLOW_LEGACY_API)
+  periph_ll_reset(PERIPH_SPI2_MODULE);
+  periph_ll_enable_clk_clear_rst(PERIPH_SPI2_MODULE);
 #endif
 
   SPI_MUTEX_LOCK();
@@ -266,7 +341,7 @@ void Arduino_ESP32SPI::begin(int32_t speed, int8_t dataMode)
   _spi->dev->dma_conf.dma_seg_trans_en = 0;
 #endif
   _spi->dev->user.usr_mosi = 1;
-  if (_miso < 0)
+  if (_miso == GFX_NOT_DEFINED)
   {
     _spi->dev->user.usr_miso = 0;
     _spi->dev->user.doutdin = 0;
@@ -279,7 +354,11 @@ void Arduino_ESP32SPI::begin(int32_t speed, int8_t dataMode)
 
   for (uint8_t i = 0; i < 16; i++)
   {
+#if CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5
+    _spi->dev->data_buf[i].val = 0x00000000;
+#else
     _spi->dev->data_buf[i] = 0x00000000;
+#endif
   }
   SPI_MUTEX_UNLOCK();
 
@@ -302,8 +381,20 @@ void Arduino_ESP32SPI::begin(int32_t speed, int8_t dataMode)
   {
     spiTransaction(_spi, _div, _dataMode, _bitOrder);
   }
+
+  _buffer = (uint8_t *)heap_caps_aligned_alloc(16, ESP32SPI_MAX_PIXELS_AT_ONCE * 2, MALLOC_CAP_DMA);
+  if (!_buffer)
+  {
+    return false;
+  }
+
+  return true;
 }
 
+/**
+ * @brief beginWrite
+ *
+ */
 void Arduino_ESP32SPI::beginWrite()
 {
   _data_buf_bit_idx = 0;
@@ -321,6 +412,10 @@ void Arduino_ESP32SPI::beginWrite()
   CS_LOW();
 }
 
+/**
+ * @brief endWrite
+ *
+ */
 void Arduino_ESP32SPI::endWrite()
 {
   if (_data_buf_bit_idx > 0)
@@ -336,9 +431,14 @@ void Arduino_ESP32SPI::endWrite()
   CS_HIGH();
 }
 
+/**
+ * @brief writeCommand
+ *
+ * @param c
+ */
 void Arduino_ESP32SPI::writeCommand(uint8_t c)
 {
-  if (_dc < 0) // 9-bit SPI
+  if (_dc == GFX_NOT_DEFINED) // 9-bit SPI
   {
     WRITE9BIT(c);
   }
@@ -351,26 +451,25 @@ void Arduino_ESP32SPI::writeCommand(uint8_t c)
 
     DC_LOW();
 
-    MOSI_BIT_LEN = 7;
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32
-    MISO_BIT_LEN = 0;
-#endif
+#if CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5
+    _spi->dev->data_buf[0].val = c;
+#else
     _spi->dev->data_buf[0] = c;
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3
-    _spi->dev->cmd.update = 1;
-    while (_spi->dev->cmd.update)
-      ;
 #endif
-    _spi->dev->cmd.usr = 1;
-    WAIT_SPI_NOT_BUSY;
+    POLL(7);
 
     DC_HIGH();
   }
 }
 
+/**
+ * @brief writeCommand16
+ *
+ * @param c
+ */
 void Arduino_ESP32SPI::writeCommand16(uint16_t c)
 {
-  if (_dc < 0) // 9-bit SPI
+  if (_dc == GFX_NOT_DEFINED) // 9-bit SPI
   {
     _data16.value = c;
     WRITE9BIT(_data16.msb);
@@ -385,26 +484,53 @@ void Arduino_ESP32SPI::writeCommand16(uint16_t c)
 
     DC_LOW();
 
-    MOSI_BIT_LEN = 15;
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32
-    MISO_BIT_LEN = 0;
-#endif
+#if CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5
+    MSB_16_SET(_spi->dev->data_buf[0].val, c);
+#else
     MSB_16_SET(_spi->dev->data_buf[0], c);
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3
-    _spi->dev->cmd.update = 1;
-    while (_spi->dev->cmd.update)
-      ;
 #endif
-    _spi->dev->cmd.usr = 1;
-    WAIT_SPI_NOT_BUSY;
+    POLL(15);
 
     DC_HIGH();
   }
 }
 
+/**
+ * @brief
+ *
+ * @param data
+ * @param len
+ */
+void Arduino_ESP32SPI::writeCommandBytes(uint8_t *data, uint32_t len)
+{
+  if (_dc == GFX_NOT_DEFINED) // 9-bit SPI
+  {
+    while (len--)
+    {
+      WRITE9BIT(*data++);
+    }
+  }
+  else
+  {
+    DC_LOW();
+
+    while (len--)
+    {
+      WRITE8BIT(*data++);
+    }
+
+    DC_HIGH();
+  }
+}
+
+/**
+ * @brief write
+ *
+ * @param d
+ */
 void Arduino_ESP32SPI::write(uint8_t d)
 {
-  if (_dc < 0) // 9-bit SPI
+  if (_dc == GFX_NOT_DEFINED) // 9-bit SPI
   {
     WRITE9BIT(0x100 | d);
   }
@@ -414,10 +540,15 @@ void Arduino_ESP32SPI::write(uint8_t d)
   }
 }
 
+/**
+ * @brief write16
+ *
+ * @param d
+ */
 void Arduino_ESP32SPI::write16(uint16_t d)
 {
   _data16.value = d;
-  if (_dc < 0) // 9-bit SPI
+  if (_dc == GFX_NOT_DEFINED) // 9-bit SPI
   {
     WRITE9BIT(0x100 | _data16.msb);
     WRITE9BIT(0x100 | _data16.lsb);
@@ -429,6 +560,140 @@ void Arduino_ESP32SPI::write16(uint16_t d)
   }
 }
 
+/**
+ * @brief writeC8D8
+ *
+ * @param c
+ * @param d
+ */
+void Arduino_ESP32SPI::writeC8D8(uint8_t c, uint8_t d)
+{
+  if (_dc == GFX_NOT_DEFINED) // 9-bit SPI
+  {
+    WRITE9BIT(c);
+    WRITE9BIT(0x100 | d);
+  }
+  else
+  {
+    if (_data_buf_bit_idx > 0)
+    {
+      flush_data_buf();
+    }
+
+    DC_LOW();
+
+#if CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5
+    _spi->dev->data_buf[0].val = c;
+#else
+    _spi->dev->data_buf[0] = c;
+#endif
+    POLL(7);
+
+    DC_HIGH();
+
+#if CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5
+    _spi->dev->data_buf[0].val = d;
+#else
+    _spi->dev->data_buf[0] = d;
+#endif
+    POLL(7);
+  }
+}
+
+/**
+ * @brief writeC8D16
+ *
+ * @param c
+ * @param d
+ */
+void Arduino_ESP32SPI::writeC8D16(uint8_t c, uint16_t d)
+{
+  if (_dc == GFX_NOT_DEFINED) // 9-bit SPI
+  {
+    WRITE9BIT(c);
+    _data16.value = d;
+    WRITE9BIT(0x100 | _data16.msb);
+    WRITE9BIT(0x100 | _data16.lsb);
+  }
+  else
+  {
+    if (_data_buf_bit_idx > 0)
+    {
+      flush_data_buf();
+    }
+
+    DC_LOW();
+
+#if CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5
+    _spi->dev->data_buf[0].val = c;
+#else
+    _spi->dev->data_buf[0] = c;
+#endif
+    POLL(7);
+
+    DC_HIGH();
+
+#if CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5
+    MSB_16_SET(_spi->dev->data_buf[0].val, d);
+#else
+    MSB_16_SET(_spi->dev->data_buf[0], d);
+#endif
+    POLL(15);
+  }
+}
+
+/**
+ * @brief writeC8D16D16
+ *
+ * @param c
+ * @param d1
+ * @param d2
+ */
+void Arduino_ESP32SPI::writeC8D16D16(uint8_t c, uint16_t d1, uint16_t d2)
+{
+  if (_dc == GFX_NOT_DEFINED) // 9-bit SPI
+  {
+    WRITE9BIT(c);
+    _data16.value = d1;
+    WRITE9BIT(0x100 | _data16.msb);
+    WRITE9BIT(0x100 | _data16.lsb);
+    _data16.value = d2;
+    WRITE9BIT(0x100 | _data16.msb);
+    WRITE9BIT(0x100 | _data16.lsb);
+  }
+  else
+  {
+    if (_data_buf_bit_idx > 0)
+    {
+      flush_data_buf();
+    }
+
+    DC_LOW();
+
+#if CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5
+    _spi->dev->data_buf[0].val = c;
+#else
+    _spi->dev->data_buf[0] = c;
+#endif
+    POLL(7);
+
+    DC_HIGH();
+
+#if CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5
+    MSB_32_16_16_SET(_spi->dev->data_buf[0].val, d1, d2);
+#else
+    MSB_32_16_16_SET(_spi->dev->data_buf[0], d1, d2);
+#endif
+    POLL(31);
+  }
+}
+
+/**
+ * @brief writeRepeat
+ *
+ * @param p
+ * @param len
+ */
 void Arduino_ESP32SPI::writeRepeat(uint16_t p, uint32_t len)
 {
   if (_data_buf_bit_idx > 0)
@@ -436,7 +701,7 @@ void Arduino_ESP32SPI::writeRepeat(uint16_t p, uint32_t len)
     flush_data_buf();
   }
 
-  if (_dc < 0) // 9-bit SPI
+  if (_dc == GFX_NOT_DEFINED) // 9-bit SPI
   {
     _data16.value = p;
     uint32_t hi = 0x100 | _data16.msb;
@@ -477,12 +742,16 @@ void Arduino_ESP32SPI::writeRepeat(uint16_t p, uint32_t len)
       _data_buf_bit_idx += 9;
     }
 
-    if (_miso < 0)
+    if (_miso == GFX_NOT_DEFINED)
     {
       l = (_data_buf_bit_idx + 31) / 32;
       for (uint32_t i = 0; i < l; i++)
       {
+#if CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5
+        _spi->dev->data_buf[i].val = _buffer32[i];
+#else
         _spi->dev->data_buf[i] = _buffer32[i];
+#endif
       }
     }
 
@@ -491,42 +760,42 @@ void Arduino_ESP32SPI::writeRepeat(uint16_t p, uint32_t len)
     {
       xferLen = (bufLen < len) ? bufLen : len; // How many this pass?
       _data_buf_bit_idx = xferLen * 18;
-      MOSI_BIT_LEN = _data_buf_bit_idx - 1;
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32
-      MISO_BIT_LEN = 0;
-#endif
+
       if (_miso != GFX_NOT_DEFINED)
       {
         l = (_data_buf_bit_idx + 31) / 32;
         for (uint32_t i = 0; i < l; i++)
         {
+#if CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5
+          _spi->dev->data_buf[i].val = _buffer32[i];
+#else
           _spi->dev->data_buf[i] = _buffer32[i];
+#endif
         }
       }
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3
-      _spi->dev->cmd.update = 1;
-      while (_spi->dev->cmd.update)
-        ;
-#endif
-      _spi->dev->cmd.usr = 1;
-      WAIT_SPI_NOT_BUSY;
+      POLL(_data_buf_bit_idx - 1);
 
       len -= xferLen;
     }
   }
   else // 8-bit SPI
   {
-    uint16_t bufLen = (len < 32) ? len : 32;
+    uint16_t bufLen = (len >= ESP32SPI_MAX_PIXELS_AT_ONCE) ? ESP32SPI_MAX_PIXELS_AT_ONCE : len;
     int16_t xferLen, l;
     uint32_t c32;
     MSB_32_16_16_SET(c32, p, p);
 
-    if (_miso < 0)
+    l = (bufLen + 1) / 2;
+    if (_miso == GFX_NOT_DEFINED)
     {
-      l = (bufLen + 1) / 2;
+      l = (bufLen + 1) >> 1;
       for (uint32_t i = 0; i < l; i++)
       {
+#if CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5
+        _spi->dev->data_buf[i].val = c32;
+#else
         _spi->dev->data_buf[i] = c32;
+#endif
       }
     }
 
@@ -534,25 +803,20 @@ void Arduino_ESP32SPI::writeRepeat(uint16_t p, uint32_t len)
     while (len) // While pixels remain
     {
       xferLen = (bufLen <= len) ? bufLen : len; // How many this pass?
-      MOSI_BIT_LEN = (xferLen * 16) - 1;
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32
-      MISO_BIT_LEN = 0;
-#endif
+
       if (_miso != GFX_NOT_DEFINED)
       {
-        l = (xferLen + 1) / 2;
+        l = (xferLen + 1) >> 1;
         for (uint32_t i = 0; i < l; i++)
         {
+#if CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5
+          _spi->dev->data_buf[i].val = c32;
+#else
           _spi->dev->data_buf[i] = c32;
+#endif
         }
       }
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3
-      _spi->dev->cmd.update = 1;
-      while (_spi->dev->cmd.update)
-        ;
-#endif
-      _spi->dev->cmd.usr = 1;
-      WAIT_SPI_NOT_BUSY;
+      POLL((xferLen << 4) - 1);
 
       len -= xferLen;
     }
@@ -561,9 +825,15 @@ void Arduino_ESP32SPI::writeRepeat(uint16_t p, uint32_t len)
   _data_buf_bit_idx = 0;
 }
 
+/**
+ * @brief writePixels
+ *
+ * @param data
+ * @param len
+ */
 void Arduino_ESP32SPI::writePixels(uint16_t *data, uint32_t len)
 {
-  if (_dc < 0) // 9-bit SPI
+  if (_dc == GFX_NOT_DEFINED) // 9-bit SPI
   {
     while (len--)
     {
@@ -572,222 +842,43 @@ void Arduino_ESP32SPI::writePixels(uint16_t *data, uint32_t len)
   }
   else // 8-bit SPI
   {
-    uint16_t p1, p2;
-    if (len >= 32)
+    if (_data_buf_bit_idx > 0)
     {
-      if (_data_buf_bit_idx > 0)
-      {
-        flush_data_buf();
-      }
-
-      MOSI_BIT_LEN = 511;
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32
-      MISO_BIT_LEN = 0;
-#endif
-      while (len >= 32)
-      {
-        for (uint8_t i = 0; i < 16; i++)
-        {
-          p1 = *data++;
-          p2 = *data++;
-          MSB_32_16_16_SET(_spi->dev->data_buf[i], p1, p2);
-        }
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3
-        _spi->dev->cmd.update = 1;
-        while (_spi->dev->cmd.update)
-          ;
-#endif
-        _spi->dev->cmd.usr = 1;
-        WAIT_SPI_NOT_BUSY;
-
-        len -= 32;
-      }
+      flush_data_buf();
     }
 
-    if ((len > 0) && ((len % 2) == 0))
+    uint32_t l, l2;
+    uint16_t p1, p2;
+    while (len)
     {
-      if (_data_buf_bit_idx > 0)
-      {
-        flush_data_buf();
-      }
-
-      MOSI_BIT_LEN = (len * 16) - 1;
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32
-      MISO_BIT_LEN = 0;
-#endif
-      len >>= 1; // 2 pixels to a 32-bit data
-      for (uint32_t i = 0; i < len; i++)
+      l = (len > ESP32SPI_MAX_PIXELS_AT_ONCE) ? ESP32SPI_MAX_PIXELS_AT_ONCE : len;
+      l2 = (l + 1) >> 1;
+      for (uint32_t i = 0; i < l2; ++i)
       {
         p1 = *data++;
         p2 = *data++;
+#if CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5
+        MSB_32_16_16_SET(_spi->dev->data_buf[i].val, p1, p2);
+#else
         MSB_32_16_16_SET(_spi->dev->data_buf[i], p1, p2);
+#endif
       }
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3
-      _spi->dev->cmd.update = 1;
-      while (_spi->dev->cmd.update)
-        ;
-#endif
-      _spi->dev->cmd.usr = 1;
-      WAIT_SPI_NOT_BUSY;
-    }
-    else
-    {
-      while (len--)
-      {
-        write16(*data++);
-      }
+      POLL((l << 4) - 1);
+
+      len -= l;
     }
   }
 }
 
-void Arduino_ESP32SPI::writeC8D8(uint8_t c, uint8_t d)
-{
-  if (_dc < 0) // 9-bit SPI
-  {
-    WRITE9BIT(c);
-    WRITE9BIT(0x100 | d);
-  }
-  else
-  {
-    if (_data_buf_bit_idx > 0)
-    {
-      flush_data_buf();
-    }
-
-    DC_LOW();
-
-    MOSI_BIT_LEN = 7;
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32
-    MISO_BIT_LEN = 0;
-#endif
-    _spi->dev->data_buf[0] = c;
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3
-    _spi->dev->cmd.update = 1;
-    while (_spi->dev->cmd.update)
-      ;
-#endif
-    _spi->dev->cmd.usr = 1;
-    WAIT_SPI_NOT_BUSY;
-
-    DC_HIGH();
-
-    MOSI_BIT_LEN = 7;
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32
-    MISO_BIT_LEN = 0;
-#endif
-    _spi->dev->data_buf[0] = d;
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3
-    _spi->dev->cmd.update = 1;
-    while (_spi->dev->cmd.update)
-      ;
-#endif
-    _spi->dev->cmd.usr = 1;
-    WAIT_SPI_NOT_BUSY;
-  }
-}
-
-void Arduino_ESP32SPI::writeC8D16(uint8_t c, uint16_t d)
-{
-  if (_dc < 0) // 9-bit SPI
-  {
-    WRITE9BIT(c);
-    _data16.value = d;
-    WRITE9BIT(0x100 | _data16.msb);
-    WRITE9BIT(0x100 | _data16.lsb);
-  }
-  else
-  {
-    if (_data_buf_bit_idx > 0)
-    {
-      flush_data_buf();
-    }
-
-    DC_LOW();
-
-    MOSI_BIT_LEN = 7;
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32
-    MISO_BIT_LEN = 0;
-#endif
-    _spi->dev->data_buf[0] = c;
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3
-    _spi->dev->cmd.update = 1;
-    while (_spi->dev->cmd.update)
-      ;
-#endif
-    _spi->dev->cmd.usr = 1;
-    WAIT_SPI_NOT_BUSY;
-
-    DC_HIGH();
-
-    MOSI_BIT_LEN = 15;
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32
-    MISO_BIT_LEN = 0;
-#endif
-    MSB_16_SET(_spi->dev->data_buf[0], d);
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3
-    _spi->dev->cmd.update = 1;
-    while (_spi->dev->cmd.update)
-      ;
-#endif
-    _spi->dev->cmd.usr = 1;
-    WAIT_SPI_NOT_BUSY;
-  }
-}
-
-void Arduino_ESP32SPI::writeC8D16D16(uint8_t c, uint16_t d1, uint16_t d2)
-{
-  if (_dc < 0) // 9-bit SPI
-  {
-    WRITE9BIT(c);
-    _data16.value = d1;
-    WRITE9BIT(0x100 | _data16.msb);
-    WRITE9BIT(0x100 | _data16.lsb);
-    _data16.value = d2;
-    WRITE9BIT(0x100 | _data16.msb);
-    WRITE9BIT(0x100 | _data16.lsb);
-  }
-  else
-  {
-    if (_data_buf_bit_idx > 0)
-    {
-      flush_data_buf();
-    }
-
-    DC_LOW();
-
-    MOSI_BIT_LEN = 7;
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32
-    MISO_BIT_LEN = 0;
-#endif
-    _spi->dev->data_buf[0] = c;
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3
-    _spi->dev->cmd.update = 1;
-    while (_spi->dev->cmd.update)
-      ;
-#endif
-    _spi->dev->cmd.usr = 1;
-    WAIT_SPI_NOT_BUSY;
-
-    DC_HIGH();
-
-    MOSI_BIT_LEN = 31;
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32
-    MISO_BIT_LEN = 0;
-#endif
-    MSB_32_16_16_SET(_spi->dev->data_buf[0], d1, d2);
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3
-    _spi->dev->cmd.update = 1;
-    while (_spi->dev->cmd.update)
-      ;
-#endif
-    _spi->dev->cmd.usr = 1;
-    WAIT_SPI_NOT_BUSY;
-  }
-}
-
+/**
+ * @brief writeBytes
+ *
+ * @param data
+ * @param len
+ */
 void Arduino_ESP32SPI::writeBytes(uint8_t *data, uint32_t len)
 {
-  if (_dc < 0) // 9-bit SPI
+  if (_dc == GFX_NOT_DEFINED) // 9-bit SPI
   {
     while (len--)
     {
@@ -796,81 +887,44 @@ void Arduino_ESP32SPI::writeBytes(uint8_t *data, uint32_t len)
   }
   else // 8-bit SPI
   {
-    uint32_t *p = (uint32_t *)data;
-    if (len >= 64)
+    if (_data_buf_bit_idx > 0)
     {
-      if (_data_buf_bit_idx > 0)
-      {
-        flush_data_buf();
-      }
-      MOSI_BIT_LEN = 511;
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32
-      MISO_BIT_LEN = 0;
-#endif
-      while (len >= 64)
-      {
-        for (uint32_t i = 0; i < 16; i++)
-        {
-          _spi->dev->data_buf[i] = *p++;
-        }
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3
-        _spi->dev->cmd.update = 1;
-        while (_spi->dev->cmd.update)
-          ;
-#endif
-        _spi->dev->cmd.usr = 1;
-        WAIT_SPI_NOT_BUSY;
-
-        len -= 64;
-        data += 64;
-      }
+      flush_data_buf();
     }
 
-    if ((len > 0) && ((len % 4) == 0))
+    uint32_t l, l4;
+    uint32_t *p;
+    while (len)
     {
-      if (_data_buf_bit_idx > 0)
+      l = (len > (ESP32SPI_MAX_PIXELS_AT_ONCE << 1)) ? (ESP32SPI_MAX_PIXELS_AT_ONCE << 1) : len;
+      l4 = (l + 3) >> 2;
+      p = (uint32_t *)data;
+      for (uint32_t i = 0; i < l4; ++i)
       {
-        flush_data_buf();
-      }
-
-      MOSI_BIT_LEN = (len * 8) - 1;
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32
-      MISO_BIT_LEN = 0;
-#endif
-      len >>= 2; // 4 bytes to a 32-bit data
-      for (uint32_t i = 0; i < len; i++)
-      {
+#if CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5
+        _spi->dev->data_buf[i].val = *p++;
+#else
         _spi->dev->data_buf[i] = *p++;
-      }
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3
-      _spi->dev->cmd.update = 1;
-      while (_spi->dev->cmd.update)
-        ;
 #endif
-      _spi->dev->cmd.usr = 1;
-      WAIT_SPI_NOT_BUSY;
-    }
-    else
-    {
-      while (len--)
-      {
-        write(*data++);
       }
+      POLL((l << 3) - 1);
+
+      len -= l;
+      data += l;
     }
   }
 }
 
-void Arduino_ESP32SPI::writePattern(uint8_t *data, uint8_t len, uint32_t repeat)
-{
-  while (repeat--)
-  {
-    writeBytes(data, len);
-  }
-}
-
+/**
+ * @brief writeIndexedPixels
+ *
+ * @param data
+ * @param idx
+ * @param len
+ */
 void Arduino_ESP32SPI::writeIndexedPixels(uint8_t *data, uint16_t *idx, uint32_t len)
 {
-  if (_dc < 0) // 9-bit SPI
+  if (_dc == GFX_NOT_DEFINED) // 9-bit SPI
   {
     while (len--)
     {
@@ -879,78 +933,53 @@ void Arduino_ESP32SPI::writeIndexedPixels(uint8_t *data, uint16_t *idx, uint32_t
   }
   else // 8-bit SPI
   {
+    if (_data_buf_bit_idx > 0)
+    {
+      flush_data_buf();
+    }
+
+    uint32_t l, l2;
     uint16_t p1, p2;
-    if (len >= 32)
+    while (len)
     {
-      if (_data_buf_bit_idx > 0)
+      l = (len > ESP32SPI_MAX_PIXELS_AT_ONCE) ? ESP32SPI_MAX_PIXELS_AT_ONCE : len;
+      l2 = l >> 1;
+      for (uint32_t i = 0; i < l2; ++i)
       {
-        flush_data_buf();
-      }
-
-      MOSI_BIT_LEN = 511;
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32
-      MISO_BIT_LEN = 0;
-#endif
-      while (len >= 32)
-      {
-        for (uint8_t i = 0; i < 16; i++)
-        {
-          p1 = idx[*data++];
-          p2 = idx[*data++];
-          MSB_32_16_16_SET(_spi->dev->data_buf[i], p1, p2);
-        }
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3
-        _spi->dev->cmd.update = 1;
-        while (_spi->dev->cmd.update)
-          ;
-#endif
-        _spi->dev->cmd.usr = 1;
-        WAIT_SPI_NOT_BUSY;
-
-        len -= 32;
-      }
-    }
-
-    if ((len > 0) && ((len % 2) == 0))
-    {
-      if (_data_buf_bit_idx > 0)
-      {
-        flush_data_buf();
-      }
-
-      MOSI_BIT_LEN = (len * 16) - 1;
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32
-      MISO_BIT_LEN = 0;
-#endif
-      len >>= 1; // 2 pixels to a 32-bit data
-      for (uint32_t i = 0; i < len; i++)
-      {
-        p1 = *data++;
-        p2 = *data++;
+        p1 = idx[*data++];
+        p2 = idx[*data++];
+#if CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5
+        MSB_32_16_16_SET(_spi->dev->data_buf[i].val, p1, p2);
+#else
         MSB_32_16_16_SET(_spi->dev->data_buf[i], p1, p2);
-      }
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3
-      _spi->dev->cmd.update = 1;
-      while (_spi->dev->cmd.update)
-        ;
 #endif
-      _spi->dev->cmd.usr = 1;
-      WAIT_SPI_NOT_BUSY;
-    }
-    else
-    {
-      while (len--)
-      {
-        write16(*data++);
       }
+      if (l & 1)
+      {
+        p1 = idx[*data++];
+#if CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5
+        MSB_16_SET(_spi->dev->data_buf[l - 1].val, p1);
+#else
+        MSB_16_SET(_spi->dev->data_buf[l - 1], p1);
+#endif
+      }
+      POLL((l << 4) - 1);
+
+      len -= l;
     }
   }
 }
 
+/**
+ * @brief writeIndexedPixelsDouble
+ *
+ * @param data
+ * @param idx
+ * @param len
+ */
 void Arduino_ESP32SPI::writeIndexedPixelsDouble(uint8_t *data, uint16_t *idx, uint32_t len)
 {
-  uint16_t p;
-  if (_dc < 0) // 9-bit SPI
+  if (_dc == GFX_NOT_DEFINED) // 9-bit SPI
   {
     uint16_t hi, lo;
     while (len--)
@@ -966,104 +995,76 @@ void Arduino_ESP32SPI::writeIndexedPixelsDouble(uint8_t *data, uint16_t *idx, ui
   }
   else // 8-bit SPI
   {
-    if (len >= 16)
+    if (_data_buf_bit_idx > 0)
     {
-      if (_data_buf_bit_idx > 0)
-      {
-        flush_data_buf();
-      }
-
-      MOSI_BIT_LEN = 511;
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32
-      MISO_BIT_LEN = 0;
-#endif
-      while (len >= 16)
-      {
-        for (uint8_t i = 0; i < 16; i++)
-        {
-          p = idx[*data++];
-          MSB_32_16_16_SET(_spi->dev->data_buf[i], p, p);
-        }
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3
-        _spi->dev->cmd.update = 1;
-        while (_spi->dev->cmd.update)
-          ;
-#endif
-        _spi->dev->cmd.usr = 1;
-        WAIT_SPI_NOT_BUSY;
-
-        len -= 16;
-      }
+      flush_data_buf();
     }
 
-    if ((len > 0) && ((len % 2) == 0))
+    uint32_t l;
+    uint16_t p;
+    while (len)
     {
-      if (_data_buf_bit_idx > 0)
-      {
-        flush_data_buf();
-      }
-
-      MOSI_BIT_LEN = (len * 16) - 1;
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32
-      MISO_BIT_LEN = 0;
-#endif
-      for (uint32_t i = 0; i < len; i++)
+      l = (len > (ESP32SPI_MAX_PIXELS_AT_ONCE >> 1)) ? (ESP32SPI_MAX_PIXELS_AT_ONCE >> 1) : len;
+      for (uint32_t i = 0; i < l; ++i)
       {
         p = idx[*data++];
+#if CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5
+        MSB_32_16_16_SET(_spi->dev->data_buf[i].val, p, p);
+#else
         MSB_32_16_16_SET(_spi->dev->data_buf[i], p, p);
-      }
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3
-      _spi->dev->cmd.update = 1;
-      while (_spi->dev->cmd.update)
-        ;
 #endif
-      _spi->dev->cmd.usr = 1;
-      WAIT_SPI_NOT_BUSY;
-    }
-    else
-    {
-      while (len--)
-      {
-        write16(*data++);
       }
+      POLL((l << 5) - 1);
+
+      len -= l;
     }
   }
 }
 
+/**
+ * @brief flush_data_buf
+ *
+ */
 void Arduino_ESP32SPI::flush_data_buf()
 {
-  MOSI_BIT_LEN = _data_buf_bit_idx - 1;
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32
-  MISO_BIT_LEN = 0;
-#endif
   uint32_t len = (_data_buf_bit_idx + 31) / 32;
   for (uint32_t i = 0; i < len; i++)
   {
+#if CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5
+    _spi->dev->data_buf[i].val = _buffer32[i];
+#else
     _spi->dev->data_buf[i] = _buffer32[i];
-  }
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3
-  _spi->dev->cmd.update = 1;
-  while (_spi->dev->cmd.update)
-    ;
 #endif
-  _spi->dev->cmd.usr = 1;
-  WAIT_SPI_NOT_BUSY;
+  }
+  POLL(_data_buf_bit_idx - 1);
 
   _data_buf_bit_idx = 0;
 }
 
-INLINE void Arduino_ESP32SPI::WRITE8BIT(uint8_t d)
+/**
+ * @brief WRITE8BIT
+ *
+ * @param d
+ * @return GFX_INLINE
+ */
+GFX_INLINE void Arduino_ESP32SPI::WRITE8BIT(uint8_t d)
 {
   uint16_t idx = _data_buf_bit_idx >> 3;
   _buffer[idx] = d;
   _data_buf_bit_idx += 8;
-  if (_data_buf_bit_idx >= 512)
+  if (_data_buf_bit_idx >= (ESP32SPI_MAX_PIXELS_AT_ONCE << 4))
   {
     flush_data_buf();
   }
 }
 
-INLINE void Arduino_ESP32SPI::WRITE9BIT(uint32_t d)
+/**
+ * @brief WRITE9BIT
+ *
+ * @param d
+ * @return GFX_INLINE
+ */
+GFX_INLINE void Arduino_ESP32SPI::WRITE9BIT(uint32_t d)
 {
   uint16_t idx = _data_buf_bit_idx >> 3;
   uint8_t shift = (_data_buf_bit_idx % 8);
@@ -1086,17 +1087,32 @@ INLINE void Arduino_ESP32SPI::WRITE9BIT(uint32_t d)
 
 /******** low level bit twiddling **********/
 
-INLINE void Arduino_ESP32SPI::DC_HIGH(void)
+/**
+ * @brief DC_HIGH
+ *
+ * @return GFX_INLINE
+ */
+GFX_INLINE void Arduino_ESP32SPI::DC_HIGH(void)
 {
   *_dcPortSet = _dcPinMask;
 }
 
-INLINE void Arduino_ESP32SPI::DC_LOW(void)
+/**
+ * @brief DC_LOW
+ *
+ * @return GFX_INLINE
+ */
+GFX_INLINE void Arduino_ESP32SPI::DC_LOW(void)
 {
   *_dcPortClr = _dcPinMask;
 }
 
-INLINE void Arduino_ESP32SPI::CS_HIGH(void)
+/**
+ * @brief CS_HIGH
+ *
+ * @return GFX_INLINE
+ */
+GFX_INLINE void Arduino_ESP32SPI::CS_HIGH(void)
 {
   if (_cs != GFX_NOT_DEFINED)
   {
@@ -1104,7 +1120,12 @@ INLINE void Arduino_ESP32SPI::CS_HIGH(void)
   }
 }
 
-INLINE void Arduino_ESP32SPI::CS_LOW(void)
+/**
+ * @brief CS_LOW
+ *
+ * @return GFX_INLINE
+ */
+GFX_INLINE void Arduino_ESP32SPI::CS_LOW(void)
 {
   if (_cs != GFX_NOT_DEFINED)
   {
@@ -1112,4 +1133,35 @@ INLINE void Arduino_ESP32SPI::CS_LOW(void)
   }
 }
 
-#endif // #if defined(ESP32)
+/**
+ * @brief POLL
+ *
+ * @return GFX_INLINE
+ */
+GFX_INLINE void Arduino_ESP32SPI::POLL(uint32_t len)
+{
+#if (CONFIG_IDF_TARGET_ESP32)
+  _spi->dev->mosi_dlen.usr_mosi_dbitlen = len;
+#elif (CONFIG_IDF_TARGET_ESP32S2)
+  _spi->dev->mosi_dlen.usr_mosi_bit_len = len;
+#elif (CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5)
+  _spi->dev->ms_dlen.ms_data_bitlen = len;
+#endif
+
+#if (CONFIG_IDF_TARGET_ESP32)
+  _spi->dev->miso_dlen.usr_miso_dbitlen = 0;
+#elif (CONFIG_IDF_TARGET_ESP32S2)
+  _spi->dev->miso_dlen.usr_miso_bit_len = 0;
+#endif
+
+#if !defined(CONFIG_IDF_TARGET_ESP32) && !defined(CONFIG_IDF_TARGET_ESP32S2)
+  _spi->dev->cmd.update = 1;
+  while (_spi->dev->cmd.update)
+    ;
+#endif
+  _spi->dev->cmd.usr = 1;
+  while (_spi->dev->cmd.usr)
+    ;
+}
+
+#endif // #if defined(ESP32) && (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32C2 || CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5)

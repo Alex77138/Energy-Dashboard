@@ -1,5 +1,7 @@
 .pio/
 .vscode/
+.claude/
 *.bin
 *.elf
 *.map
+src/config.h

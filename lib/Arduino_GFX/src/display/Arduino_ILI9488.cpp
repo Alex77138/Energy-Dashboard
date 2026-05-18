@@ -5,9 +5,9 @@ Arduino_ILI9488::Arduino_ILI9488(Arduino_DataBus *bus, int8_t rst, uint8_t r, bo
 {
 }
 
-void Arduino_ILI9488::begin(int32_t speed)
+bool Arduino_ILI9488::begin(int32_t speed)
 {
-  Arduino_TFT::begin(speed);
+  return Arduino_TFT::begin(speed);
 }
 
 /**************************************************************************/
@@ -46,14 +46,14 @@ void Arduino_ILI9488::writeAddrWindow(int16_t x, int16_t y, uint16_t w, uint16_t
     _currentX = x;
     _currentW = w;
     x += _xStart;
-    _bus->writeC8D16D16(ILI9488_CASET, x, x + w - 1);
+    _bus->writeC8D16D16Split(ILI9488_CASET, x, x + w - 1);
   }
   if ((y != _currentY) || (h != _currentH))
   {
     _currentY = y;
     _currentH = h;
     y += _yStart;
-    _bus->writeC8D16D16(ILI9488_PASET, y, y + h - 1);
+    _bus->writeC8D16D16Split(ILI9488_PASET, y, y + h - 1);
   }
 
   _bus->writeCommand(ILI9488_RAMWR); // write to RAM
@@ -61,7 +61,7 @@ void Arduino_ILI9488::writeAddrWindow(int16_t x, int16_t y, uint16_t w, uint16_t
 
 void Arduino_ILI9488::invertDisplay(bool i)
 {
-  _bus->sendCommand(i ? ILI9488_INVON : ILI9488_INVOFF);
+  _bus->sendCommand((_ips ^ i) ? ILI9488_INVON : ILI9488_INVOFF);
 }
 
 void Arduino_ILI9488::displayOn(void)
@@ -103,12 +103,5 @@ void Arduino_ILI9488::tftInit()
   _bus->writeC8D8(0x3A, 0x55); // Interface Pixel Format, 16 bit
   _bus->endWrite();
 
-  if (_ips)
-  {
-    _bus->sendCommand(ILI9488_INVON);
-  }
-  else
-  {
-    _bus->sendCommand(ILI9488_INVOFF);
-  }
+  invertDisplay(false);
 }

@@ -11,10 +11,11 @@ Arduino_ILI9342::Arduino_ILI9342(Arduino_DataBus *bus, int8_t rst, uint8_t r, bo
 {
 }
 
-void Arduino_ILI9342::begin(int32_t speed)
+bool Arduino_ILI9342::begin(int32_t speed)
 {
   _override_datamode = SPI_MODE0; // always use SPI_MODE0
-  Arduino_TFT::begin(speed);
+
+  return Arduino_TFT::begin(speed);
 }
 
 /**************************************************************************/
@@ -105,10 +106,7 @@ void Arduino_ILI9342::tftInit()
     delay(ILI9342_RST_DELAY);
   }
 
-  _bus->batchOperation(ILI9342_init_operations, sizeof(ILI9342_init_operations));
+  _bus->batchOperation(ili9342_init_operations, sizeof(ili9342_init_operations));
 
-  if (_ips)
-  {
-    _bus->sendCommand(ILI9342_INVON);
-  }
+  invertDisplay(false);
 }

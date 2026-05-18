@@ -9,11 +9,8 @@ Arduino_SWSPI::Arduino_SWSPI(int8_t dc, int8_t cs, int8_t sck, int8_t mosi, int8
 {
 }
 
-void Arduino_SWSPI::begin(int32_t speed, int8_t dataMode)
+bool Arduino_SWSPI::begin(int32_t, int8_t)
 {
-  UNUSED(speed);
-  UNUSED(dataMode);
-
   if (_dc != GFX_NOT_DEFINED)
   {
     pinMode(_dc, OUTPUT);
@@ -71,7 +68,31 @@ void Arduino_SWSPI::begin(int32_t speed, int8_t dataMode)
     _misoPinMask = 1UL << pin;
     _misoPort = &reg->IN;
   }
-#elif defined(ARDUINO_RASPBERRY_PI_PICO) || defined(ARDUINO_RASPBERRY_PI_PICO_W)
+#elif defined(ARDUINO_UNOR4_MINIMA) || defined(ARDUINO_UNOR4_WIFI)
+  if (_dc != GFX_NOT_DEFINED)
+  {
+    _dcPinMask = digitalPinToBitMask(_dc);
+    _dcPortSet = (PORTreg_t) & (((R_PORT0_Type *)IOPORT_PRV_PORT_ADDRESS(digitalPinToPort(_dc)))->POSR);
+    _dcPortClr = (PORTreg_t) & (((R_PORT0_Type *)IOPORT_PRV_PORT_ADDRESS(digitalPinToPort(_dc)))->PORR);
+  }
+  if (_cs != GFX_NOT_DEFINED)
+  {
+    _csPinMask = digitalPinToBitMask(_cs);
+    _csPortSet = (PORTreg_t) & (((R_PORT0_Type *)IOPORT_PRV_PORT_ADDRESS(digitalPinToPort(_cs)))->POSR);
+    _csPortClr = (PORTreg_t) & (((R_PORT0_Type *)IOPORT_PRV_PORT_ADDRESS(digitalPinToPort(_cs)))->PORR);
+  }
+  _sckPinMask = digitalPinToBitMask(_sck);
+  _sckPortSet = (PORTreg_t) & (((R_PORT0_Type *)IOPORT_PRV_PORT_ADDRESS(digitalPinToPort(_sck)))->POSR);
+  _sckPortClr = (PORTreg_t) & (((R_PORT0_Type *)IOPORT_PRV_PORT_ADDRESS(digitalPinToPort(_sck)))->PORR);
+  _mosiPinMask = digitalPinToBitMask(_mosi);
+  _mosiPortSet = (PORTreg_t) & (((R_PORT0_Type *)IOPORT_PRV_PORT_ADDRESS(digitalPinToPort(_mosi)))->POSR);
+  _mosiPortClr = (PORTreg_t) & (((R_PORT0_Type *)IOPORT_PRV_PORT_ADDRESS(digitalPinToPort(_mosi)))->PORR);
+  if (_miso != GFX_NOT_DEFINED)
+  {
+    _misoPinMask = digitalPinToBitMask(_miso);
+    _misoPort = (PORTreg_t)portInputRegister(digitalPinToPort(_miso));
+  }
+#elif defined(TARGET_RP2040) || defined(PICO_RP2350)
   if (_dc != GFX_NOT_DEFINED)
   {
     _dcPinMask = digitalPinToBitMask(_dc);
@@ -95,77 +116,77 @@ void Arduino_SWSPI::begin(int32_t speed, int8_t dataMode)
     _misoPinMask = digitalPinToBitMask(_miso);
     _misoPort = (PORTreg_t)portInputRegister(digitalPinToPort(_miso));
   }
-#elif defined(ESP32) && (CONFIG_IDF_TARGET_ESP32C3)
-  _dcPinMask = digitalPinToBitMask(_dc);
-  _dcPortSet = (PORTreg_t)&GPIO.out_w1ts;
-  _dcPortClr = (PORTreg_t)&GPIO.out_w1tc;
-  if (_cs != GFX_NOT_DEFINED)
-  {
-    _csPinMask = digitalPinToBitMask(_cs);
-    _csPortSet = (PORTreg_t)&GPIO.out_w1ts;
-    _csPortClr = (PORTreg_t)&GPIO.out_w1tc;
-  }
-  _sckPinMask = digitalPinToBitMask(_sck);
-  _sckPortSet = (PORTreg_t)&GPIO.out_w1ts;
-  _sckPortClr = (PORTreg_t)&GPIO.out_w1tc;
-  _mosiPinMask = digitalPinToBitMask(_mosi);
-  _mosiPortSet = (PORTreg_t)&GPIO.out_w1ts;
-  _mosiPortClr = (PORTreg_t)&GPIO.out_w1tc;
-  if (_miso != GFX_NOT_DEFINED)
-  {
-    _misoPinMask = digitalPinToBitMask(_miso);
-    _misoPort = (PORTreg_t)GPIO_IN_REG;
-  }
-#elif defined(ESP32)
+#elif defined(ESP32) && (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5)
   _dcPinMask = digitalPinToBitMask(_dc);
   if (_dc >= 32)
   {
-    _dcPortSet = (PORTreg_t)&GPIO.out1_w1ts.val;
-    _dcPortClr = (PORTreg_t)&GPIO.out1_w1tc.val;
+    _dcPortSet = (PORTreg_t)GPIO_OUT1_W1TS_REG;
+    _dcPortClr = (PORTreg_t)GPIO_OUT1_W1TC_REG;
   }
-  else
+  else if (_dc != GFX_NOT_DEFINED)
   {
-    _dcPortSet = (PORTreg_t)&GPIO.out_w1ts;
-    _dcPortClr = (PORTreg_t)&GPIO.out_w1tc;
+    _dcPortSet = (PORTreg_t)GPIO_OUT_W1TS_REG;
+    _dcPortClr = (PORTreg_t)GPIO_OUT_W1TC_REG;
   }
   if (_cs >= 32)
   {
     _csPinMask = digitalPinToBitMask(_cs);
-    _csPortSet = (PORTreg_t)&GPIO.out1_w1ts.val;
-    _csPortClr = (PORTreg_t)&GPIO.out1_w1tc.val;
+    _csPortSet = (PORTreg_t)GPIO_OUT1_W1TS_REG;
+    _csPortClr = (PORTreg_t)GPIO_OUT1_W1TC_REG;
   }
   else if (_cs != GFX_NOT_DEFINED)
   {
     _csPinMask = digitalPinToBitMask(_cs);
-    _csPortSet = (PORTreg_t)&GPIO.out_w1ts;
-    _csPortClr = (PORTreg_t)&GPIO.out_w1tc;
+    _csPortSet = (PORTreg_t)GPIO_OUT_W1TS_REG;
+    _csPortClr = (PORTreg_t)GPIO_OUT_W1TC_REG;
   }
   _sckPinMask = digitalPinToBitMask(_sck);
   _mosiPinMask = digitalPinToBitMask(_mosi);
   if (_sck >= 32)
   {
-    _sckPortSet = (PORTreg_t)&GPIO.out1_w1ts.val;
-    _sckPortClr = (PORTreg_t)&GPIO.out1_w1tc.val;
+    _sckPortSet = (PORTreg_t)GPIO_OUT1_W1TS_REG;
+    _sckPortClr = (PORTreg_t)GPIO_OUT1_W1TC_REG;
   }
   else
   {
-    _sckPortSet = (PORTreg_t)&GPIO.out_w1ts;
-    _sckPortClr = (PORTreg_t)&GPIO.out_w1tc;
+    _sckPortSet = (PORTreg_t)GPIO_OUT_W1TS_REG;
+    _sckPortClr = (PORTreg_t)GPIO_OUT_W1TC_REG;
   }
   if (_mosi >= 32)
   {
-    _mosiPortSet = (PORTreg_t)&GPIO.out1_w1ts.val;
-    _mosiPortClr = (PORTreg_t)&GPIO.out1_w1tc.val;
+    _mosiPortSet = (PORTreg_t)GPIO_OUT1_W1TS_REG;
+    _mosiPortClr = (PORTreg_t)GPIO_OUT1_W1TC_REG;
   }
   else
   {
-    _mosiPortSet = (PORTreg_t)&GPIO.out_w1ts;
-    _mosiPortClr = (PORTreg_t)&GPIO.out_w1tc;
+    _mosiPortSet = (PORTreg_t)GPIO_OUT_W1TS_REG;
+    _mosiPortClr = (PORTreg_t)GPIO_OUT_W1TC_REG;
   }
   if (_miso != GFX_NOT_DEFINED)
   {
     _misoPinMask = digitalPinToBitMask(_miso);
     _misoPort = (PORTreg_t)portInputRegister(digitalPinToPort(_miso));
+  }
+#elif defined(ESP32)
+  _dcPinMask = digitalPinToBitMask(_dc);
+  _dcPortSet = (PORTreg_t)GPIO_OUT_W1TS_REG;
+  _dcPortClr = (PORTreg_t)GPIO_OUT_W1TC_REG;
+  if (_cs != GFX_NOT_DEFINED)
+  {
+    _csPinMask = digitalPinToBitMask(_cs);
+    _csPortSet = (PORTreg_t)GPIO_OUT_W1TS_REG;
+    _csPortClr = (PORTreg_t)GPIO_OUT_W1TC_REG;
+  }
+  _sckPinMask = digitalPinToBitMask(_sck);
+  _sckPortSet = (PORTreg_t)GPIO_OUT_W1TS_REG;
+  _sckPortClr = (PORTreg_t)GPIO_OUT_W1TC_REG;
+  _mosiPinMask = digitalPinToBitMask(_mosi);
+  _mosiPortSet = (PORTreg_t)GPIO_OUT_W1TS_REG;
+  _mosiPortClr = (PORTreg_t)GPIO_OUT_W1TC_REG;
+  if (_miso != GFX_NOT_DEFINED)
+  {
+    _misoPinMask = digitalPinToBitMask(_miso);
+    _misoPort = (PORTreg_t)GPIO_IN_REG;
   }
 #elif defined(CORE_TEENSY)
   if (_dc != GFX_NOT_DEFINED)
@@ -252,6 +273,8 @@ void Arduino_SWSPI::begin(int32_t speed, int8_t dataMode)
   }
 #endif // !HAS_PORT_SET_CLR
 #endif // USE_FAST_PINIO
+
+  return true;
 }
 
 void Arduino_SWSPI::beginWrite()
@@ -270,7 +293,7 @@ void Arduino_SWSPI::endWrite()
 
 void Arduino_SWSPI::writeCommand(uint8_t c)
 {
-  if (_dc < 0) // 9-bit SPI
+  if (_dc == GFX_NOT_DEFINED) // 9-bit SPI
   {
     WRITE9BITCOMMAND(c);
   }
@@ -284,7 +307,7 @@ void Arduino_SWSPI::writeCommand(uint8_t c)
 
 void Arduino_SWSPI::writeCommand16(uint16_t c)
 {
-  if (_dc < 0) // 9-bit SPI
+  if (_dc == GFX_NOT_DEFINED) // 9-bit SPI
   {
     _data16.value = c;
     WRITE9BITCOMMAND(_data16.msb);
@@ -298,9 +321,29 @@ void Arduino_SWSPI::writeCommand16(uint16_t c)
   }
 }
 
+void Arduino_SWSPI::writeCommandBytes(uint8_t *data, uint32_t len)
+{
+  if (_dc == GFX_NOT_DEFINED) // 9-bit SPI
+  {
+    while (len--)
+    {
+      WRITE9BITCOMMAND(*data++);
+    }
+  }
+  else
+  {
+    DC_LOW();
+    while (len--)
+    {
+      WRITE(*data++);
+    }
+    DC_HIGH();
+  }
+}
+
 void Arduino_SWSPI::write(uint8_t d)
 {
-  if (_dc < 0) // 9-bit SPI
+  if (_dc == GFX_NOT_DEFINED) // 9-bit SPI
   {
     WRITE9BITDATA(d);
   }
@@ -312,7 +355,7 @@ void Arduino_SWSPI::write(uint8_t d)
 
 void Arduino_SWSPI::write16(uint16_t d)
 {
-  if (_dc < 0) // 9-bit SPI
+  if (_dc == GFX_NOT_DEFINED) // 9-bit SPI
   {
     _data16.value = d;
     WRITE9BITDATA(_data16.msb);
@@ -326,7 +369,7 @@ void Arduino_SWSPI::write16(uint16_t d)
 
 void Arduino_SWSPI::writeRepeat(uint16_t p, uint32_t len)
 {
-  if (_dc < 0) // 9-bit SPI
+  if (_dc == GFX_NOT_DEFINED) // 9-bit SPI
   {
 // ESP8266 avoid trigger watchdog
 #if defined(ESP8266)
@@ -373,20 +416,9 @@ void Arduino_SWSPI::writeBytes(uint8_t *data, uint32_t len)
     WRITE(*data++);
   }
 }
-
-void Arduino_SWSPI::writePattern(uint8_t *data, uint8_t len, uint32_t repeat)
-{
-  while (repeat--)
-  {
-    for (uint8_t i = 0; i < len; i++)
-    {
-      WRITE(data[i]);
-    }
-  }
-}
 #endif // !defined(LITTLE_FOOT_PRINT)
 
-INLINE void Arduino_SWSPI::WRITE9BITCOMMAND(uint8_t c)
+GFX_INLINE void Arduino_SWSPI::WRITE9BITCOMMAND(uint8_t c)
 {
   // D/C bit, command
   SPI_MOSI_LOW();
@@ -410,7 +442,7 @@ INLINE void Arduino_SWSPI::WRITE9BITCOMMAND(uint8_t c)
   }
 }
 
-INLINE void Arduino_SWSPI::WRITE9BITDATA(uint8_t d)
+GFX_INLINE void Arduino_SWSPI::WRITE9BITDATA(uint8_t d)
 {
   // D/C bit, data
   SPI_MOSI_HIGH();
@@ -434,7 +466,7 @@ INLINE void Arduino_SWSPI::WRITE9BITDATA(uint8_t d)
   }
 }
 
-INLINE void Arduino_SWSPI::WRITE(uint8_t d)
+GFX_INLINE void Arduino_SWSPI::WRITE(uint8_t d)
 {
   uint8_t bit = 0x80;
   while (bit)
@@ -453,7 +485,7 @@ INLINE void Arduino_SWSPI::WRITE(uint8_t d)
   }
 }
 
-INLINE void Arduino_SWSPI::WRITE16(uint16_t d)
+GFX_INLINE void Arduino_SWSPI::WRITE16(uint16_t d)
 {
   uint16_t bit = 0x8000;
   while (bit)
@@ -472,7 +504,7 @@ INLINE void Arduino_SWSPI::WRITE16(uint16_t d)
   }
 }
 
-INLINE void Arduino_SWSPI::WRITE9BITREPEAT(uint16_t p, uint32_t len)
+GFX_INLINE void Arduino_SWSPI::WRITE9BITREPEAT(uint16_t p, uint32_t len)
 {
   if (p == 0xffff) // no need to set MOSI level while filling white
   {
@@ -495,7 +527,7 @@ INLINE void Arduino_SWSPI::WRITE9BITREPEAT(uint16_t p, uint32_t len)
   }
 }
 
-INLINE void Arduino_SWSPI::WRITEREPEAT(uint16_t p, uint32_t len)
+GFX_INLINE void Arduino_SWSPI::WRITEREPEAT(uint16_t p, uint32_t len)
 {
   if ((p == 0x0000) || (p == 0xffff)) // no need to set MOSI level while filling black or white
   {
@@ -525,7 +557,7 @@ INLINE void Arduino_SWSPI::WRITEREPEAT(uint16_t p, uint32_t len)
 
 /******** low level bit twiddling **********/
 
-INLINE void Arduino_SWSPI::DC_HIGH(void)
+GFX_INLINE void Arduino_SWSPI::DC_HIGH(void)
 {
 #if defined(USE_FAST_PINIO)
 #if defined(HAS_PORT_SET_CLR)
@@ -542,7 +574,7 @@ INLINE void Arduino_SWSPI::DC_HIGH(void)
 #endif // end !USE_FAST_PINIO
 }
 
-INLINE void Arduino_SWSPI::DC_LOW(void)
+GFX_INLINE void Arduino_SWSPI::DC_LOW(void)
 {
 #if defined(USE_FAST_PINIO)
 #if defined(HAS_PORT_SET_CLR)
@@ -559,7 +591,7 @@ INLINE void Arduino_SWSPI::DC_LOW(void)
 #endif // end !USE_FAST_PINIO
 }
 
-INLINE void Arduino_SWSPI::CS_HIGH(void)
+GFX_INLINE void Arduino_SWSPI::CS_HIGH(void)
 {
   if (_cs != GFX_NOT_DEFINED)
   {
@@ -579,7 +611,7 @@ INLINE void Arduino_SWSPI::CS_HIGH(void)
   }
 }
 
-INLINE void Arduino_SWSPI::CS_LOW(void)
+GFX_INLINE void Arduino_SWSPI::CS_LOW(void)
 {
   if (_cs != GFX_NOT_DEFINED)
   {
@@ -602,7 +634,7 @@ INLINE void Arduino_SWSPI::CS_LOW(void)
 /*!
     @brief  Set the software (bitbang) SPI MOSI line HIGH.
 */
-INLINE void Arduino_SWSPI::SPI_MOSI_HIGH(void)
+GFX_INLINE void Arduino_SWSPI::SPI_MOSI_HIGH(void)
 {
 #if defined(USE_FAST_PINIO)
 #if defined(HAS_PORT_SET_CLR)
@@ -622,7 +654,7 @@ INLINE void Arduino_SWSPI::SPI_MOSI_HIGH(void)
 /*!
     @brief  Set the software (bitbang) SPI MOSI line LOW.
 */
-INLINE void Arduino_SWSPI::SPI_MOSI_LOW(void)
+GFX_INLINE void Arduino_SWSPI::SPI_MOSI_LOW(void)
 {
 #if defined(USE_FAST_PINIO)
 #if defined(HAS_PORT_SET_CLR)
@@ -642,7 +674,7 @@ INLINE void Arduino_SWSPI::SPI_MOSI_LOW(void)
 /*!
     @brief  Set the software (bitbang) SPI SCK line HIGH.
 */
-INLINE void Arduino_SWSPI::SPI_SCK_HIGH(void)
+GFX_INLINE void Arduino_SWSPI::SPI_SCK_HIGH(void)
 {
 #if defined(USE_FAST_PINIO)
 #if defined(HAS_PORT_SET_CLR)
@@ -666,7 +698,7 @@ INLINE void Arduino_SWSPI::SPI_SCK_HIGH(void)
 /*!
     @brief  Set the software (bitbang) SPI SCK line LOW.
 */
-INLINE void Arduino_SWSPI::SPI_SCK_LOW(void)
+GFX_INLINE void Arduino_SWSPI::SPI_SCK_LOW(void)
 {
 #if defined(USE_FAST_PINIO)
 #if defined(HAS_PORT_SET_CLR)
@@ -691,7 +723,7 @@ INLINE void Arduino_SWSPI::SPI_SCK_LOW(void)
     @brief   Read the state of the software (bitbang) SPI MISO line.
     @return  true if HIGH, false if LOW.
 */
-INLINE bool Arduino_SWSPI::SPI_MISO_READ(void)
+GFX_INLINE bool Arduino_SWSPI::SPI_MISO_READ(void)
 {
 #if defined(USE_FAST_PINIO)
 #if defined(KINETISK)

@@ -13,9 +13,9 @@ Arduino_JBT6K71::Arduino_JBT6K71(
 {
 }
 
-void Arduino_JBT6K71::begin(int32_t speed)
+bool Arduino_JBT6K71::begin(int32_t speed)
 {
-  Arduino_TFT::begin(speed);
+  return Arduino_TFT::begin(speed);
 }
 
 // Companion code to the above tables.  Reads and issues
@@ -165,17 +165,10 @@ void Arduino_JBT6K71::setRotation(uint8_t r)
 
 void Arduino_JBT6K71::invertDisplay(bool i)
 {
-  if (
-      (_ips && (!i)) || ((!_ips) && i))
-  {
-    _bus->writeCommand16(0x0007); // Display mode
-    _bus->write16(0x4004);
-  }
-  else
-  {
-    _bus->writeCommand16(0x0007); // Display mode
-    _bus->write16(0x4000);
-  }
+  _bus->beginWrite();
+  _bus->writeCommand16(0x0007); // Display mode
+  _bus->write16((_ips ^ i) ? 0x4004 : 0x4000);
+  _bus->endWrite();
 }
 
 void Arduino_JBT6K71::displayOn(void)

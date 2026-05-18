@@ -4,10 +4,11 @@
  * Image Source: https://support.arduino.cc/hc/en-us/articles/360020652100
  *
  * How to create custom image:
- * 1. Open image ith GIMP
- * 2. Export Image as C-Source
- * 3. Uncheck all option and check "Save as RGB565 (16-bit)"
- * 4. Revise exported file just like "Arduino_UNO_Rev3_Ok.c"
+ * 1. Open image in the GIMP
+ * 2. Resize image to fit for the display and MCU memory
+ * 3. Export Image as C-Source
+ * 4. Uncheck all option and check "Save as RGB565 (16-bit)"
+ * 5. Revise exported file just like "Arduino_UNO_Rev3_Ok.c"
  ******************************************************************************/
 #include "Arduino_UNO_Rev3_Ok.c"
 #define IMG_WIDTH 100
@@ -15,14 +16,18 @@
 
 /*******************************************************************************
  * Start of Arduino_GFX setting
- * 
+ *
  * Arduino_GFX try to find the settings depends on selected board in Arduino IDE
  * Or you can define the display dev kit not in the board list
  * Defalult pin list for non display dev kit:
  * Arduino Nano, Micro and more: CS:  9, DC:  8, RST:  7, BL:  6, SCK: 13, MOSI: 11, MISO: 12
  * ESP32 various dev board     : CS:  5, DC: 27, RST: 33, BL: 22, SCK: 18, MOSI: 23, MISO: nil
- * ESP32-C3 various dev board  : CS:  7, DC:  2, RST:  1, BL:  3, SCK:  4, MOSI:  6, MISO: nil
- * ESP32-S2 various dev board  : CS: 34, DC: 35, RST: 33, BL: 21, SCK: 36, MOSI: 35, MISO: nil
+ * ESP32-C2/3 various dev board: CS:  7, DC:  2, RST:  1, BL:  3, SCK:  4, MOSI:  6, MISO: nil
+ * ESP32-C5 various dev board  : CS: 23, DC: 24, RST: 25, BL: 26, SCK: 10, MOSI:  8, MISO: nil
+ * ESP32-C6 various dev board  : CS: 18, DC: 22, RST: 23, BL: 15, SCK: 21, MOSI: 19, MISO: nil
+ * ESP32-H2 various dev board  : CS:  0, DC: 12, RST:  8, BL: 22, SCK: 10, MOSI: 25, MISO: nil
+ * ESP32-P4 various dev board  : CS: 26, DC: 27, RST: 25, BL: 24, SCK: 36, MOSI: 32, MISO: nil
+ * ESP32-S2 various dev board  : CS: 34, DC: 38, RST: 33, BL: 21, SCK: 36, MOSI: 35, MISO: nil
  * ESP32-S3 various dev board  : CS: 40, DC: 41, RST: 42, BL: 48, SCK: 36, MOSI: 35, MISO: nil
  * ESP8266 various dev board   : CS: 15, DC:  4, RST:  2, BL:  5, SCK: 14, MOSI: 13, MISO: 12
  * Raspberry Pi Pico dev board : CS: 17, DC: 27, RST: 26, BL: 28, SCK: 18, MOSI: 19, MISO: 16
@@ -55,20 +60,28 @@ Arduino_GFX *gfx = new Arduino_ILI9341(bus, DF_GFX_RST, 3 /* rotation */, false 
 
 void setup()
 {
-  Serial.begin(115200);
-  // while (!Serial);
-  Serial.println("BMP Image Viewer");
-
-  // Init Display
-  gfx->begin();
-  gfx->fillScreen(BLACK);
-
-#ifdef GFX_BL
-    pinMode(GFX_BL, OUTPUT);
-    digitalWrite(GFX_BL, HIGH);
+#ifdef DEV_DEVICE_INIT
+  DEV_DEVICE_INIT();
 #endif
 
-  gfx->draw16bitRGBBitmap(0, 0, (const uint16_t*)Arduino_UNO_Rev3_Ok, IMG_WIDTH, IMG_HEIGHT);
+  Serial.begin(115200);
+  // Serial.setDebugOutput(true);
+  // while(!Serial);
+  Serial.println("Arduino_GFX PROGMEM Image Viewer example");
+
+  // Init Display
+  if (!gfx->begin())
+  {
+    Serial.println("gfx->begin() failed!");
+  }
+  gfx->fillScreen(RGB565_BLACK);
+
+#ifdef GFX_BL
+  pinMode(GFX_BL, OUTPUT);
+  digitalWrite(GFX_BL, HIGH);
+#endif
+
+  gfx->draw16bitRGBBitmap(0, 0, (const uint16_t *)Arduino_UNO_Rev3_Ok, IMG_WIDTH, IMG_HEIGHT);
 
   delay(5000); // 5 seconds
 }
@@ -77,7 +90,7 @@ void loop()
 {
   int16_t x = random(gfx->width());
   int16_t y = random(gfx->height());
-  gfx->draw16bitRGBBitmap(x, y, (const uint16_t*)Arduino_UNO_Rev3_Ok, IMG_WIDTH, IMG_HEIGHT);
+  gfx->draw16bitRGBBitmap(x, y, (const uint16_t *)Arduino_UNO_Rev3_Ok, IMG_WIDTH, IMG_HEIGHT);
 
   delay(1000); // 1 second
 }

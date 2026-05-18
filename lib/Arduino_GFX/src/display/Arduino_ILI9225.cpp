@@ -10,9 +10,9 @@ Arduino_ILI9225::Arduino_ILI9225(Arduino_DataBus *bus, int8_t rst, uint8_t r)
 {
 }
 
-void Arduino_ILI9225::begin(int32_t speed)
+bool Arduino_ILI9225::begin(int32_t speed)
 {
-  Arduino_TFT::begin(speed);
+  return Arduino_TFT::begin(speed);
 }
 
 /**************************************************************************/
@@ -97,10 +97,9 @@ void Arduino_ILI9225::writeAddrWindow(int16_t x, int16_t y, uint16_t w, uint16_t
   _bus->writeCommand(ILI9225_GRAM_DATA_REG); // write to RAM
 }
 
-void Arduino_ILI9225::invertDisplay(bool i)
+void Arduino_ILI9225::invertDisplay(bool)
 {
   // Not Implemented
-  UNUSED(i);
 }
 
 void Arduino_ILI9225::displayOn(void)

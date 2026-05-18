@@ -9,10 +9,11 @@ Arduino_GC9106::Arduino_GC9106(
 {
 }
 
-void Arduino_GC9106::begin(int32_t speed)
+bool Arduino_GC9106::begin(int32_t speed)
 {
   _override_datamode = SPI_MODE0; // always use SPI_MODE0
-  Arduino_TFT::begin(speed);
+
+  return Arduino_TFT::begin(speed);
 }
 
 void Arduino_GC9106::writeAddrWindow(int16_t x, int16_t y, uint16_t w, uint16_t h)
@@ -56,8 +57,7 @@ void Arduino_GC9106::setRotation(uint8_t r)
     break;
   }
   _bus->beginWrite();
-  _bus->writeCommand(GC9106_MADCTL);
-  _bus->write(r);
+  _bus->writeC8D8(GC9106_MADCTL, r);
   _bus->endWrite();
 }
 
@@ -97,8 +97,5 @@ void Arduino_GC9106::tftInit()
 
   _bus->batchOperation(GC9106_init_operations, sizeof(GC9106_init_operations));
 
-  if (_ips)
-  {
-    _bus->sendCommand(GC9106_INVON);
-  }
+  invertDisplay(false);
 }

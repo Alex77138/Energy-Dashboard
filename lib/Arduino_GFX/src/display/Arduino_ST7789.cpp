@@ -14,12 +14,15 @@ Arduino_ST7789::Arduino_ST7789(
 {
 }
 
-void Arduino_ST7789::begin(int32_t speed)
+bool Arduino_ST7789::begin(int32_t speed)
 {
 #if defined(ESP32) || defined(ARDUINO_ARCH_NRF52840)
   _override_datamode = SPI_MODE3;
+#elif defined(ESP8266)
+  _override_datamode = SPI_MODE2;
 #endif
-  Arduino_TFT::begin(speed);
+
+  return Arduino_TFT::begin(speed);
 }
 
 /**************************************************************************/
@@ -42,13 +45,24 @@ void Arduino_ST7789::setRotation(uint8_t r)
   case 3:
     r = ST7789_MADCTL_MY | ST7789_MADCTL_MV | ST7789_MADCTL_RGB;
     break;
+  case 4:
+    r = ST7789_MADCTL_MX | ST7789_MADCTL_RGB;
+    break;
+  case 5:
+  r = ST7789_MADCTL_MX | ST7789_MADCTL_MY | ST7789_MADCTL_MV | ST7789_MADCTL_RGB;
+    break;
+  case 6:
+    r = ST7789_MADCTL_MY | ST7789_MADCTL_RGB;
+    break;
+  case 7:
+  r = ST7789_MADCTL_MV | ST7789_MADCTL_RGB;
+    break;
   default: // case 0:
     r = ST7789_MADCTL_RGB;
     break;
   }
   _bus->beginWrite();
-  _bus->writeCommand(ST7789_MADCTL);
-  _bus->write(r);
+  _bus->writeC8D8(ST7789_MADCTL, r);
   _bus->endWrite();
 }
 
@@ -75,7 +89,7 @@ void Arduino_ST7789::writeAddrWindow(int16_t x, int16_t y, uint16_t w, uint16_t 
 
 void Arduino_ST7789::invertDisplay(bool i)
 {
-  _bus->sendCommand(_ips ? (i ? ST7789_INVOFF : ST7789_INVON) : (i ? ST7789_INVON : ST7789_INVOFF));
+  _bus->sendCommand((_ips ^ i) ? ST7789_INVON : ST7789_INVOFF);
 }
 
 void Arduino_ST7789::displayOn(void)
@@ -113,8 +127,5 @@ void Arduino_ST7789::tftInit()
 
   _bus->batchOperation(st7789_init_operations, sizeof(st7789_init_operations));
 
-  if (_ips)
-  {
-    _bus->sendCommand(ST7789_INVON);
-  }
+  invertDisplay(false);
 }

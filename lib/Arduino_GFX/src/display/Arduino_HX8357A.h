@@ -1,8 +1,6 @@
 #ifndef _ARDUINO_HX8357A_H_
 #define _ARDUINO_HX8357A_H_
 
-#include <Arduino.h>
-#include <Print.h>
 #include "../Arduino_GFX.h"
 #include "../Arduino_TFT.h"
 
@@ -135,8 +133,8 @@
 #define HX8357A_MADCTL_BGR 0x08 // RGB-BGR ORDER
 #define HX8357A_MADCTL_SS 0x02  // SOURCE OUTPUT ORDER
 #define HX8357A_MADCTL_GS 0x01  // GATE OUTPUT ORDER
-#define HX8359A_INV_ON 0x20     // INV_ON enable
-#define HX8359A_INV_OFF 0x00    // INV_ON disable
+#define HX8357A_INV_ON 0x20     // INV_ON enable
+#define HX8357A_INV_OFF 0x00    // INV_ON disable
 
 static const uint8_t hx8357a_init_operations[] = {
     BEGIN_WRITE,
@@ -437,7 +435,7 @@ class Arduino_HX8357A : public Arduino_TFT
 public:
   Arduino_HX8357A(Arduino_DataBus *bus, int8_t rst = GFX_NOT_DEFINED, uint8_t r = 0, bool ips = false);
 
-  void begin(int32_t speed = GFX_NOT_DEFINED) override;
+  bool begin(int32_t speed = GFX_NOT_DEFINED) override;
 
   void setRotation(uint8_t r) override;
 

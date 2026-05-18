@@ -34,7 +34,7 @@ Arduino_HWSPI::Arduino_HWSPI(int8_t dc, int8_t cs /* = GFX_NOT_DEFINED */, SPICl
 #endif
 }
 
-void Arduino_HWSPI::begin(int32_t speed, int8_t dataMode)
+bool Arduino_HWSPI::begin(int32_t speed, int8_t dataMode)
 {
   _speed = (speed == GFX_NOT_DEFINED) ? SPI_DEFAULT_FREQ : speed;
   _dataMode = dataMode;
@@ -63,7 +63,17 @@ void Arduino_HWSPI::begin(int32_t speed, int8_t dataMode)
     _csPortClr = &reg->OUTCLR;
     _csPinMask = 1UL << pin;
   }
-#elif defined(ARDUINO_RASPBERRY_PI_PICO) || defined(ARDUINO_RASPBERRY_PI_PICO_W)
+#elif defined(ARDUINO_UNOR4_MINIMA) || defined(ARDUINO_UNOR4_WIFI)
+  _dcPinMask = digitalPinToBitMask(_dc);
+  _dcPortSet = (PORTreg_t) & (((R_PORT0_Type *)IOPORT_PRV_PORT_ADDRESS(digitalPinToPort(_dc)))->POSR);
+  _dcPortClr = (PORTreg_t) & (((R_PORT0_Type *)IOPORT_PRV_PORT_ADDRESS(digitalPinToPort(_dc)))->PORR);
+  if (_cs != GFX_NOT_DEFINED)
+  {
+    _csPinMask = digitalPinToBitMask(_cs);
+    _csPortSet = (PORTreg_t) & (((R_PORT0_Type *)IOPORT_PRV_PORT_ADDRESS(digitalPinToPort(_cs)))->POSR);
+    _csPortClr = (PORTreg_t) & (((R_PORT0_Type *)IOPORT_PRV_PORT_ADDRESS(digitalPinToPort(_cs)))->PORR);
+  }
+#elif defined(TARGET_RP2040) || defined(PICO_RP2350)
   _dcPinMask = digitalPinToBitMask(_dc);
   _dcPortSet = (PORTreg_t)&sio_hw->gpio_set;
   _dcPortClr = (PORTreg_t)&sio_hw->gpio_clr;
@@ -73,39 +83,39 @@ void Arduino_HWSPI::begin(int32_t speed, int8_t dataMode)
     _csPortSet = (PORTreg_t)&sio_hw->gpio_set;
     _csPortClr = (PORTreg_t)&sio_hw->gpio_clr;
   }
-#elif defined(ESP32) && (CONFIG_IDF_TARGET_ESP32C3)
-  _dcPinMask = digitalPinToBitMask(_dc);
-  _dcPortSet = (PORTreg_t)&GPIO.out_w1ts;
-  _dcPortClr = (PORTreg_t)&GPIO.out_w1tc;
-  if (_cs != GFX_NOT_DEFINED)
-  {
-    _csPinMask = digitalPinToBitMask(_cs);
-    _csPortSet = (PORTreg_t)&GPIO.out_w1ts;
-    _csPortClr = (PORTreg_t)&GPIO.out_w1tc;
-  }
-#elif defined(ESP32)
+#elif defined(ESP32) && (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32C5)
   _dcPinMask = digitalPinToBitMask(_dc);
   if (_dc >= 32)
   {
-    _dcPortSet = (PORTreg_t)&GPIO.out1_w1ts.val;
-    _dcPortClr = (PORTreg_t)&GPIO.out1_w1tc.val;
+    _dcPortSet = (PORTreg_t)GPIO_OUT1_W1TS_REG;
+    _dcPortClr = (PORTreg_t)GPIO_OUT1_W1TC_REG;
   }
   else
   {
-    _dcPortSet = (PORTreg_t)&GPIO.out_w1ts;
-    _dcPortClr = (PORTreg_t)&GPIO.out_w1tc;
+    _dcPortSet = (PORTreg_t)GPIO_OUT_W1TS_REG;
+    _dcPortClr = (PORTreg_t)GPIO_OUT_W1TC_REG;
   }
   if (_cs >= 32)
   {
     _csPinMask = digitalPinToBitMask(_cs);
-    _csPortSet = (PORTreg_t)&GPIO.out1_w1ts.val;
-    _csPortClr = (PORTreg_t)&GPIO.out1_w1tc.val;
+    _csPortSet = (PORTreg_t)GPIO_OUT1_W1TS_REG;
+    _csPortClr = (PORTreg_t)GPIO_OUT1_W1TC_REG;
   }
   else if (_cs != GFX_NOT_DEFINED)
   {
     _csPinMask = digitalPinToBitMask(_cs);
-    _csPortSet = (PORTreg_t)&GPIO.out_w1ts;
-    _csPortClr = (PORTreg_t)&GPIO.out_w1tc;
+    _csPortSet = (PORTreg_t)GPIO_OUT_W1TS_REG;
+    _csPortClr = (PORTreg_t)GPIO_OUT_W1TC_REG;
+  }
+#elif defined(ESP32)
+  _dcPinMask = digitalPinToBitMask(_dc);
+  _dcPortSet = (PORTreg_t)GPIO_OUT_W1TS_REG;
+  _dcPortClr = (PORTreg_t)GPIO_OUT_W1TC_REG;
+  if (_cs != GFX_NOT_DEFINED)
+  {
+    _csPinMask = digitalPinToBitMask(_cs);
+    _csPortSet = (PORTreg_t)GPIO_OUT_W1TS_REG;
+    _csPortClr = (PORTreg_t)GPIO_OUT_W1TC_REG;
   }
 #elif defined(CORE_TEENSY)
 #if !defined(KINETISK)
@@ -199,6 +209,8 @@ void Arduino_HWSPI::begin(int32_t speed, int8_t dataMode)
     _dataMode = SPI_MODE2;
   }
 #endif
+
+  return true;
 }
 
 void Arduino_HWSPI::beginWrite()
@@ -242,6 +254,18 @@ void Arduino_HWSPI::writeCommand16(uint16_t c)
 #else  // !defined(LITTLE_FOOT_PRINT)
   WRITE16(c);
 #endif // !defined(LITTLE_FOOT_PRINT)
+
+  DC_HIGH();
+}
+
+void Arduino_HWSPI::writeCommandBytes(uint8_t *data, uint32_t len)
+{
+  DC_LOW();
+
+  while (len--)
+  {
+    WRITE(*data++);
+  }
 
   DC_HIGH();
 }
@@ -306,6 +330,18 @@ void Arduino_HWSPI::writeRepeat(uint16_t p, uint32_t len)
 #endif // other arch
 }
 
+void Arduino_HWSPI::writeBytes(uint8_t *data, uint32_t len)
+{
+#if defined(LITTLE_FOOT_PRINT)
+  while (len--)
+  {
+    WRITE(*data++);
+  }
+#else  // !defined(LITTLE_FOOT_PRINT)
+  WRITEBUF(data, len);
+#endif // !defined(LITTLE_FOOT_PRINT)
+}
+
 void Arduino_HWSPI::writePixels(uint16_t *data, uint32_t len)
 {
 #if defined(LITTLE_FOOT_PRINT)
@@ -346,11 +382,6 @@ void Arduino_HWSPI::writePixels(uint16_t *data, uint32_t len)
 }
 
 #if !defined(LITTLE_FOOT_PRINT)
-void Arduino_HWSPI::writeBytes(uint8_t *data, uint32_t len)
-{
-  WRITEBUF(data, len);
-}
-
 void Arduino_HWSPI::writePattern(uint8_t *data, uint8_t len, uint32_t repeat)
 {
 #if defined(ESP8266) || defined(ESP32)
@@ -364,7 +395,7 @@ void Arduino_HWSPI::writePattern(uint8_t *data, uint8_t len, uint32_t repeat)
 }
 #endif // !defined(LITTLE_FOOT_PRINT)
 
-INLINE void Arduino_HWSPI::WRITE(uint8_t d)
+GFX_INLINE void Arduino_HWSPI::WRITE(uint8_t d)
 {
 #if defined(SPI_HAS_TRANSACTION)
   _spi->transfer(d);
@@ -382,7 +413,7 @@ INLINE void Arduino_HWSPI::WRITE(uint8_t d)
 
 #if !defined(LITTLE_FOOT_PRINT)
 
-INLINE void Arduino_HWSPI::WRITE16(uint16_t d)
+GFX_INLINE void Arduino_HWSPI::WRITE16(uint16_t d)
 {
 #if defined(ESP8266) || defined(ESP32)
   _spi->write16(d);
@@ -402,7 +433,7 @@ INLINE void Arduino_HWSPI::WRITE16(uint16_t d)
 #endif
 }
 
-INLINE void Arduino_HWSPI::WRITEBUF(uint8_t *buf, size_t count)
+GFX_INLINE void Arduino_HWSPI::WRITEBUF(uint8_t *buf, size_t count)
 {
 #if defined(ESP8266) || defined(ESP32)
   _spi->writeBytes(buf, count);
@@ -417,7 +448,7 @@ INLINE void Arduino_HWSPI::WRITEBUF(uint8_t *buf, size_t count)
 
 /******** low level bit twiddling **********/
 
-INLINE void Arduino_HWSPI::DC_HIGH(void)
+GFX_INLINE void Arduino_HWSPI::DC_HIGH(void)
 {
 #if defined(USE_FAST_PINIO)
 #if defined(HAS_PORT_SET_CLR)
@@ -434,7 +465,7 @@ INLINE void Arduino_HWSPI::DC_HIGH(void)
 #endif // end !USE_FAST_PINIO
 }
 
-INLINE void Arduino_HWSPI::DC_LOW(void)
+GFX_INLINE void Arduino_HWSPI::DC_LOW(void)
 {
 #if defined(USE_FAST_PINIO)
 #if defined(HAS_PORT_SET_CLR)
@@ -451,7 +482,7 @@ INLINE void Arduino_HWSPI::DC_LOW(void)
 #endif // end !USE_FAST_PINIO
 }
 
-INLINE void Arduino_HWSPI::CS_HIGH(void)
+GFX_INLINE void Arduino_HWSPI::CS_HIGH(void)
 {
   if (_cs != GFX_NOT_DEFINED)
   {
@@ -471,7 +502,7 @@ INLINE void Arduino_HWSPI::CS_HIGH(void)
   }
 }
 
-INLINE void Arduino_HWSPI::CS_LOW(void)
+GFX_INLINE void Arduino_HWSPI::CS_LOW(void)
 {
   if (_cs != GFX_NOT_DEFINED)
   {

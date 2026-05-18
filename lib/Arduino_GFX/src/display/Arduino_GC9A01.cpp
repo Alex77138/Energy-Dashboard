@@ -9,10 +9,11 @@ Arduino_GC9A01::Arduino_GC9A01(
 {
 }
 
-void Arduino_GC9A01::begin(int32_t speed)
+bool Arduino_GC9A01::begin(int32_t speed)
 {
   _override_datamode = SPI_MODE0; // always use SPI_MODE0
-  Arduino_TFT::begin(speed);
+
+  return Arduino_TFT::begin(speed);
 }
 
 void Arduino_GC9A01::writeAddrWindow(int16_t x, int16_t y, uint16_t w, uint16_t h)
@@ -56,8 +57,7 @@ void Arduino_GC9A01::setRotation(uint8_t r)
     break;
   }
   _bus->beginWrite();
-  _bus->writeCommand(GC9A01_MADCTL);
-  _bus->write(r);
+  _bus->writeC8D8(GC9A01_MADCTL, r);
   _bus->endWrite();
 }
 
@@ -84,7 +84,7 @@ void Arduino_GC9A01::tftInit()
   {
     pinMode(_rst, OUTPUT);
     digitalWrite(_rst, HIGH);
-    delay(100);
+    delay(GC9A01_RST_DELAY);
     digitalWrite(_rst, LOW);
     delay(GC9A01_RST_DELAY);
     digitalWrite(_rst, HIGH);
@@ -97,8 +97,5 @@ void Arduino_GC9A01::tftInit()
 
   _bus->batchOperation(gc9a01_init_operations, sizeof(gc9a01_init_operations));
 
-  if (_ips)
-  {
-    _bus->sendCommand(GC9A01_INVON);
-  }
+  invertDisplay(false);
 }

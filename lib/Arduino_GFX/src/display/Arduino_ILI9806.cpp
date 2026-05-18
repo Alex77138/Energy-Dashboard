@@ -6,10 +6,11 @@ Arduino_ILI9806::Arduino_ILI9806(Arduino_DataBus *bus, int8_t rst, uint8_t r, bo
 {
 }
 
-void Arduino_ILI9806::begin(int32_t speed)
+bool Arduino_ILI9806::begin(int32_t speed)
 {
   _override_datamode = SPI_MODE0; // always use SPI_MODE0
-  Arduino_TFT::begin(speed);
+
+  return Arduino_TFT::begin(speed);
 }
 
 /**************************************************************************/
@@ -105,8 +106,5 @@ void Arduino_ILI9806::tftInit()
 
   _bus->batchOperation(ili9806_init_operations, sizeof(ili9806_init_operations));
 
-  if (_ips)
-  {
-    _bus->sendCommand(ILI9806_INVON);
-  }
+  invertDisplay(false);
 }

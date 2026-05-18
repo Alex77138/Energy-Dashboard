@@ -13,9 +13,9 @@ Arduino_NT35310::Arduino_NT35310(
 {
 }
 
-void Arduino_NT35310::begin(int32_t speed)
+bool Arduino_NT35310::begin(int32_t speed)
 {
-  Arduino_TFT::begin(speed);
+  return Arduino_TFT::begin(speed);
 }
 
 void Arduino_NT35310::writeAddrWindow(int16_t x, int16_t y, uint16_t w, uint16_t h)
@@ -63,8 +63,7 @@ void Arduino_NT35310::setRotation(uint8_t r)
     break;
   }
   _bus->beginWrite();
-  _bus->writeCommand(NT35310_SET_ADDRESS_MODE);
-  _bus->write(r);
+  _bus->writeC8D8(NT35310_SET_ADDRESS_MODE, r);
   _bus->endWrite();
 }
 
@@ -106,8 +105,5 @@ void Arduino_NT35310::tftInit()
 
   _bus->batchOperation(nt35310_init_operations, sizeof(nt35310_init_operations));
 
-  if (_ips)
-  {
-    _bus->sendCommand(NT35310_ENTER_INVERT_MODE);
-  }
+  invertDisplay(false);
 }

@@ -13,9 +13,9 @@ Arduino_NT39125::Arduino_NT39125(
 {
 }
 
-void Arduino_NT39125::begin(int32_t speed)
+bool Arduino_NT39125::begin(int32_t speed)
 {
-  Arduino_TFT::begin(speed);
+  return Arduino_TFT::begin(speed);
 }
 
 void Arduino_NT39125::writeAddrWindow(int16_t x, int16_t y, uint16_t w, uint16_t h)
@@ -63,8 +63,7 @@ void Arduino_NT39125::setRotation(uint8_t r)
     break;
   }
   _bus->beginWrite();
-  _bus->writeCommand(NT39125_MADCTL);
-  _bus->write(r);
+  _bus->writeC8D8(NT39125_MADCTL, r);
   _bus->endWrite();
 }
 
@@ -106,8 +105,5 @@ void Arduino_NT39125::tftInit()
 
   _bus->batchOperation(nt39125_init_operations, sizeof(nt39125_init_operations));
 
-  if (_ips)
-  {
-    _bus->sendCommand(NT39125_INVON);
-  }
+  invertDisplay(false);
 }

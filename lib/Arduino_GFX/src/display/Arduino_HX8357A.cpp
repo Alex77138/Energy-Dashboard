@@ -5,9 +5,9 @@ Arduino_HX8357A::Arduino_HX8357A(Arduino_DataBus *bus, int8_t rst, uint8_t r, bo
 {
 }
 
-void Arduino_HX8357A::begin(int32_t speed)
+bool Arduino_HX8357A::begin(int32_t speed)
 {
-  Arduino_TFT::begin(speed);
+  return Arduino_TFT::begin(speed);
 }
 
 /**************************************************************************/
@@ -79,7 +79,7 @@ void Arduino_HX8357A::writeAddrWindow(int16_t x, int16_t y, uint16_t w, uint16_t
 void Arduino_HX8357A::invertDisplay(bool i)
 {
   _bus->beginWrite();
-  _bus->writeC8D8(HX8357A_DISPLAY_MODE_CONTROL, (_ips ^ i) ? HX8359A_INV_ON : HX8359A_INV_OFF);
+  _bus->writeC8D8(HX8357A_DISPLAY_MODE_CONTROL, (_ips ^ i) ? HX8357A_INV_ON : HX8357A_INV_OFF);
   _bus->endWrite();
 }
 
@@ -140,9 +140,6 @@ void Arduino_HX8357A::tftInit()
   }
 
   _bus->batchOperation(hx8357a_init_operations, sizeof(hx8357a_init_operations));
-  if (_ips)
-  {
-    _bus->sendCommand(HX8357A_DISPLAY_MODE_CONTROL);
-    _bus->sendData(HX8359A_INV_ON);
-  }
+
+  invertDisplay(false);
 }

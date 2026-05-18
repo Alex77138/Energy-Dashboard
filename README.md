@@ -1,0 +1,272 @@
+# Dash Energy — ESP32-S3 Home Energy Monitor
+
+**Real-time energy dashboard on a 800×480 touchscreen, built on ESP32-S3.**  
+*Tableau de bord énergie temps réel sur écran tactile 800×480, basé sur l'ESP32-S3.*
+
+[![PlatformIO](https://img.shields.io/badge/PlatformIO-ESP32--S3-orange)](https://platformio.org/)
+[![LVGL](https://img.shields.io/badge/LVGL-8.4-blue)](https://lvgl.io/)
+[![Version](https://img.shields.io/badge/firmware-V1.0-green)](CHANGELOG.md)
+
+---
+
+## Features / Fonctionnalités
+
+| Feature | Détail |
+|---|---|
+| **Display** | 800×480 RGB touchscreen (JC8048W550), GT911 capacitive touch |
+| **5 LVGL screens** | Main · Solar detail · Grid detail · Battery detail · Router detail |
+| **Auto-return** | Returns to main screen after 30 s of inactivity |
+| **Multi-source solar** | Up to 4 independent solar sources, aggregated total |
+| **Energy history** | Today · Week · Month — persisted on SD card across reboots |
+| **Real-time charts** | 6-min high-freq ring + full-day 5-min curve on web UI |
+| **Web interface** | Status, configuration, OTA update, built-in user guide |
+| **Web navigation** | Control screen from browser — useful while device is wall-mounted |
+| **MQTT** | Publish all values + Home Assistant Discovery |
+| **Demo mode** | Animated simulated data — no devices required |
+| **WiFi fallback** | Captive-portal AP + auto-reconnect every 30 s |
+| **Static IP** | Optional static IP / gateway / DNS configuration |
+
+---
+
+## Supported Devices / Appareils supportés
+
+### Grid / Réseau
+| Device | Notes |
+|---|---|
+| Shelly EM (1 ou 2 phases) | |
+| Shelly 3EM (1, 2 ou 3 phases) | |
+| Shelly Pro EM / Pro 3EM | |
+| F1ATB (routeur solaire) | Puissance réseau + routage intégré |
+| Home Assistant | Entité puissance + optionnel énergie, tension, intensité |
+
+### Solar / Solaire (jusqu'à 4 sources)
+| Device | Notes |
+|---|---|
+| OpenDTU | Micro-onduleurs Hoymiles — tension DC + limite % |
+| AhoyDTU | Micro-onduleurs Hoymiles |
+| Fronius Symo / Primo | API Solar.web locale |
+| Shelly Plug S (Gen1 / Gen2+3) | |
+| Shelly EM / 3EM | 1, 2 ou 3 phases |
+| Home Assistant | Entité puissance + optionnel énergie journalière |
+
+### Battery / Batterie (jusqu'à 4)
+| Device | Notes |
+|---|---|
+| JK-BMS via ESPHome | [syssi/esphome-jk-bms](https://github.com/syssi/esphome-jk-bms) + `web_server` |
+| Home Assistant | Entités puissance, SOC, tension, intensité |
+
+### Router / Routeur solaire (jusqu'à 4)
+| Device | Notes |
+|---|---|
+| F1ATB | Routeur solaire français — puissance + durée + forçage |
+| Home Assistant | Entités puissance, énergie, durée, triac %, actif |
+
+---
+
+## Hardware / Matériel
+
+**Tested board: Guition JC8048W550** (available on AliExpress)
+
+| Composant | Détail |
+|---|---|
+| SoC | ESP32-S3-WROOM-1, 240 MHz, 512 KB SRAM, 8 MB OPI PSRAM |
+| Flash | 16 MB QSPI |
+| Écran | 5 pouces IPS 800×480 RGB parallel, rétroéclairage GPIO 2 |
+| Tactile | GT911 capacitif I2C (SDA=19, SCL=20, RST=38) |
+| SD card | SPI (CS=10, MOSI=11, MISO=13, CLK=12) |
+
+> **⚠️ GPIO 0** est le bouton BOOT/reset — ne pas l'utiliser dans le firmware.  
+> **GPIO 2** (rétroéclairage) est safe — ne déclenche pas de redémarrage.
+
+---
+
+## Getting Started / Démarrage rapide
+
+### 1. Prérequis
+
+- [PlatformIO](https://platformio.org/) (VS Code extension ou CLI)
+- Câble USB-C vers l'ESP32-S3
+- (Optionnel) Carte microSD FAT32 pour la persistance hebdo/mensuelle
+
+### 2. Cloner le dépôt
+
+```bash
+git clone https://github.com/Alex77138/Energy-Dashboard.git
+cd Energy-Dashboard
+```
+
+### 3. Créer `src/config.h`
+
+```bash
+cp src/config.h.example src/config.h
+```
+
+Éditez `src/config.h` pour renseigner votre SSID/mot de passe Wi-Fi.  
+Ces valeurs ne servent qu'au tout premier démarrage — ensuite le Wi-Fi se configure via l'interface web.
+
+### 4. Compiler et flasher
+
+```bash
+pio run --target upload
+```
+
+### 5. Premier démarrage
+
+1. L'écran s'allume et affiche l'interface principale (mode démo actif par défaut si aucun appareil n'est configuré).
+2. Un point d'accès Wi-Fi **DashEnergy-Config** est créé (sans mot de passe).
+3. Connectez-vous à ce réseau et ouvrez `http://192.168.4.1/` dans un navigateur.
+4. Allez dans l'onglet **Configuration** et renseignez votre réseau Wi-Fi, puis vos appareils.
+5. Cliquez **Sauvegarder** — le tableau de bord redémarre et se connecte à votre réseau.
+
+> L'adresse IP locale est affichée dans le moniteur série au démarrage.  
+> Vous pouvez aussi utiliser `http://dashenergy.local/` (mDNS).
+
+---
+
+## Web Interface / Interface web
+
+Accessible depuis n'importe quel navigateur sur le réseau local.
+
+| Onglet | Contenu |
+|---|---|
+| **Statut** | Puissances temps réel, énergie Auj/Sem/Mois, graphiques, navigation écran |
+| **Configuration** | Réseau, solaire (multi-sources), batteries, routeurs, MQTT, Wi-Fi, OTA |
+| **Mise à jour** | Flash OTA d'un fichier `.bin` |
+| **Aide** | Mode d'emploi complet intégré |
+
+### Endpoints API
+
+| Endpoint | Méthode | Description |
+|---|---|---|
+| `/api/status` | GET | Toutes les mesures en temps réel (JSON) |
+| `/api/config` | GET / POST | Lire ou écrire la configuration |
+| `/api/daily` | GET | Courbe journalière réseau+solaire (JSON) |
+| `/api/realtime` | GET | Ring haute fréquence 90 pts (JSON) |
+| `/api/navigate` | POST | Changer l'écran actif `{"screen": 0..4}` |
+| `/api/demo` | POST | Activer/désactiver le mode démo `{"demo": true}` |
+| `/api/restart` | POST | Redémarrer l'ESP |
+| `/api/wifi` | POST | Configurer le Wi-Fi |
+| `/update` | POST | OTA firmware upload |
+
+---
+
+## SD Card / Carte SD
+
+La carte SD est **optionnelle** mais recommandée pour conserver l'historique hebdomadaire et mensuel entre les redémarrages.
+
+Format : **FAT32**, taille de partition recommandée ≤ 32 GB.
+
+Fichiers créés automatiquement :
+
+| Fichier | Contenu |
+|---|---|
+| `/daily.bin` | Baseline journalière réseau + solaire |
+| `/period.bin` | Bases hebdomadaires et mensuelles |
+| `/day_ring.bin` | Courbe journalière (ring 288 pts × 5 min) |
+| `/log.csv` | Historique CSV horodaté (si SD présente) |
+
+---
+
+## Configuration Détaillée
+
+### Fuseau horaire
+
+Syntaxe POSIX TZ — exemples :
+
+| Zone | Valeur |
+|---|---|
+| France / Belgique / Suisse | `CET-1CEST,M3.5.0,M10.5.0/3` |
+| UTC | `UTC0` |
+| UK | `GMT0BST,M3.5.0/1,M10.5.0` |
+
+### Rotation écran
+
+| Valeur | Résultat |
+|---|---|
+| `0` | Connecteur USB en bas |
+| `2` | Connecteur USB en haut (180°) |
+
+### Home Assistant
+
+1. Dans HA : *Profil* → *Sécurité* → *Jetons d'accès longue durée* → **Créer un jeton**
+2. Copiez le jeton dans le champ **Token HA** de la configuration
+3. Renseignez l'**adresse IP:port** de votre serveur HA (ex : `192.168.1.10:8123`)
+4. Les entités s'écrivent sous la forme `sensor.nom_de_l_entite`
+
+---
+
+## Building from Source / Compilation
+
+```bash
+# Install dependencies
+pio pkg install
+
+# Build only
+pio run
+
+# Build + upload
+pio run --target upload
+
+# Serial monitor
+pio device monitor --baud 115200
+```
+
+**Mémoire utilisée (V1.0) :**
+- Flash : ~25 % (1.68 MB / 6.55 MB)
+- RAM : ~38 % (125 KB / 328 KB)
+- PSRAM : utilisée pour les framebuffers LVGL et les ring buffers web
+
+---
+
+## Architecture
+
+```
+main.cpp          — Setup, tâches FreeRTOS (display/poll/web/loop)
+display.cpp       — Arduino_GFX, LVGL init, driver tactile GT911
+ui.cpp            — 5 écrans LVGL, navigation, mise à jour
+webserver.cpp     — Interface web, API REST, graphiques, OTA
+device_config.cpp — Persistance NVS (configuration)
+sd_logger.cpp     — Persistance SD (journalier, hebdo, mensuel, ring)
+mqtt_pub.cpp      — Publication MQTT + HA Discovery
+shelly.cpp        — Drivers Shelly EM/3EM/Pro/Plug
+opendtu.cpp       — Driver OpenDTU (Hoymiles)
+ha_fetch.cpp      — Client Home Assistant REST API
+battery.cpp       — Driver ESPHome JK-BMS
+fronius.cpp       — Driver Fronius Solar API
+f1atb.cpp         — Driver F1ATB (routeur solaire)
+```
+
+**Tâches FreeRTOS :**
+
+| Tâche | Core | Priorité | Rôle |
+|---|---|---|---|
+| `display_task` | 0 | 2 | LVGL tick + UI update (500 ms) |
+| `poll_task` | 0 | 1 | Polling appareils (4 s) + accumulation |
+| `web_task` | 1 | 1 | Serveur HTTP + WebSocket |
+| `loop()` | 1 | — | Wi-Fi watchdog + DNS captif |
+
+---
+
+## Known Limitations / Limitations connues
+
+- Pas d'authentification sur l'interface web (usage réseau local uniquement)
+- OTA non signé — à utiliser uniquement sur réseau de confiance
+- Sans carte SD : énergie hebdomadaire/mensuelle perdue au redémarrage
+- Maximum 4 sources solaires, 4 batteries, 4 routeurs
+
+---
+
+## License / Licence
+
+MIT License — voir [LICENSE](LICENSE) pour le détail.
+
+---
+
+## Credits
+
+- [LVGL](https://lvgl.io/) — GUI library
+- [Arduino_GFX](https://github.com/moononournation/Arduino_GFX) — Display driver
+- [TouchLib](https://github.com/mmMicky/TouchLib) — GT911 touch driver
+- [ArduinoJson](https://arduinojson.org/) — JSON parsing
+- [PubSubClient](https://github.com/knolleary/pubsubclient) — MQTT
+- [syssi/esphome-jk-bms](https://github.com/syssi/esphome-jk-bms) — JK-BMS ESPHome component

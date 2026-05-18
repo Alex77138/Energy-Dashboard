@@ -3,16 +3,17 @@
 #include <SPI.h>
 #include <time.h>
 
-static const int SD_PIN_CS   = 10;  // Chip Select
-static const int SD_PIN_MOSI = 11;  // Master Out Slave In
-static const int SD_PIN_CLK  = 12;  // Clock
-static const int SD_PIN_MISO = 13;  // Master In Slave Out
+static const int SD_PIN_CS   = 10;
+static const int SD_PIN_MOSI = 11;
+static const int SD_PIN_CLK  = 12;
+static const int SD_PIN_MISO = 13;
 
-static const char *LOG_FILE   = "/energy_log.csv";
-static const char *CSV_HEADER = "ts,gp_w,gk_kwh,sp_w,sk_kwh";
-static const char *DAILY_FILE = "/daily.bin";
-static const char *RING_FILE  = "/dayring.bin";
-static const long  UNIX_2024 = 1704067200L;
+static const char *LOG_FILE    = "/energy_log.csv";
+static const char *CSV_HEADER  = "ts,gp_w,gk_kwh,sp_w,sk_kwh";
+static const char *DAILY_FILE  = "/daily2.bin";
+static const char *RING_FILE   = "/dayring.bin";
+static const char *PERIOD_FILE = "/period.bin";
+static const long  UNIX_2024   = 1704067200L;
 
 static bool s_ready = false;
 
@@ -28,9 +29,7 @@ bool sd_init() {
     return true;
 }
 
-bool sd_ready() {
-    return s_ready;
-}
+bool sd_ready() { return s_ready; }
 
 uint64_t sd_used_bytes()  { return s_ready ? SD.usedBytes()  : 0; }
 uint64_t sd_total_bytes() { return s_ready ? SD.totalBytes() : 0; }
@@ -47,46 +46,71 @@ void sd_log(const AppData &d) {
     }
 
     bool write_header = !SD.exists(LOG_FILE);
-
     File f = SD.open(LOG_FILE, FILE_APPEND);
     if (!f) {
         Serial.println("[sd] failed to open log file");
         return;
     }
-
-    if (write_header) {
-        f.println(CSV_HEADER);
-    }
+    if (write_header) f.println(CSV_HEADER);
 
     char row[128];
     snprintf(row, sizeof(row), "%s,%.2f,%.4f,%.2f,%.4f",
-        ts_str,
-        d.grid.power_w,
-        d.grid.today_kwh,
-        d.solar.power_w,
-        d.solar.today_kwh);
+        ts_str, d.grid.power_w, d.grid.today_kwh,
+        d.solar.power_w, d.solar.today_kwh);
     f.println(row);
     f.close();
 }
 
-bool sd_save_daily(int yday, float grid_base, float solar_base) {
+// Format daily2.bin: magic(1) + yday(4) + grid_base(4) + n_solar(1) + solar_base[n](4 each)
+bool sd_save_daily(int yday, float grid_base, const float *solar_base, int n_solar) {
     if (!s_ready) return false;
     File f = SD.open(DAILY_FILE, FILE_WRITE);
     if (!f) return false;
-    f.write((uint8_t*)&yday,       sizeof(yday));
-    f.write((uint8_t*)&grid_base,  sizeof(grid_base));
-    f.write((uint8_t*)&solar_base, sizeof(solar_base));
+    uint8_t magic = 0xDA;
+    uint8_t ns = (uint8_t)n_solar;
+    f.write(&magic, 1);
+    f.write((uint8_t*)&yday,      sizeof(yday));
+    f.write((uint8_t*)&grid_base, sizeof(grid_base));
+    f.write(&ns, 1);
+    for (int i = 0; i < n_solar; i++)
+        f.write((uint8_t*)&solar_base[i], sizeof(float));
     f.close();
     return true;
 }
 
-bool sd_load_daily(int *yday, float *grid_base, float *solar_base) {
+bool sd_load_daily(int *yday, float *grid_base, float *solar_base, int n_solar) {
     if (!s_ready || !SD.exists(DAILY_FILE)) return false;
     File f = SD.open(DAILY_FILE, FILE_READ);
     if (!f) return false;
-    bool ok = f.read((uint8_t*)yday,       sizeof(int))   == sizeof(int)   &&
-              f.read((uint8_t*)grid_base,  sizeof(float)) == sizeof(float) &&
-              f.read((uint8_t*)solar_base, sizeof(float)) == sizeof(float);
+    uint8_t magic = 0;
+    f.read(&magic, 1);
+    if (magic != 0xDA) { f.close(); return false; }
+    bool ok = f.read((uint8_t*)yday,      sizeof(int))   == sizeof(int)   &&
+              f.read((uint8_t*)grid_base, sizeof(float)) == sizeof(float);
+    if (!ok) { f.close(); return false; }
+    uint8_t ns = 0;
+    f.read(&ns, 1);
+    int to_read = (ns < (uint8_t)n_solar) ? ns : n_solar;
+    for (int i = 0; i < to_read; i++)
+        f.read((uint8_t*)&solar_base[i], sizeof(float));
+    f.close();
+    return true;
+}
+
+bool sd_save_period(const PeriodData &pd) {
+    if (!s_ready) return false;
+    File f = SD.open(PERIOD_FILE, FILE_WRITE);
+    if (!f) return false;
+    f.write((uint8_t*)&pd, sizeof(PeriodData));
+    f.close();
+    return true;
+}
+
+bool sd_load_period(PeriodData &pd) {
+    if (!s_ready || !SD.exists(PERIOD_FILE)) return false;
+    File f = SD.open(PERIOD_FILE, FILE_READ);
+    if (!f) return false;
+    bool ok = f.read((uint8_t*)&pd, sizeof(PeriodData)) == sizeof(PeriodData);
     f.close();
     return ok;
 }
@@ -119,8 +143,6 @@ bool sd_load_day_ring(int *yday, int *count, int *head, int32_t *last_ts,
     return ok;
 }
 
-// Deux passes sur le fichier : passe 1 enregistre les offsets des lignes (2 KB),
-// passe 2 relit chaque ligne depuis son offset. Évite le buffer lines[500][128] (64 KB).
 bool sd_get_history(char *out, size_t out_sz, int count) {
     if (!s_ready) {
         if (out_sz > 2) { out[0] = '['; out[1] = ']'; out[2] = '\0'; }
@@ -139,7 +161,6 @@ bool sd_get_history(char *out, size_t out_sz, int count) {
         return true;
     }
 
-    // Passe 1 : ring buffer d'offsets de début de ligne (500 × 4 = 2 000 octets)
     static size_t offsets[500];
     int ring_w = 0, total = 0;
     bool bol = true, header_done = false;
@@ -169,14 +190,12 @@ bool sd_get_history(char *out, size_t out_sz, int count) {
         return true;
     }
 
-    // Calcul de la première ligne à inclure dans les `count` dernières
     int in_ring  = (total < 500) ? total : 500;
     int actual   = (in_ring < count) ? in_ring : count;
     int oldest   = (total > 500) ? ring_w : 0;
     int skip     = in_ring - actual;
     int ring_start = (oldest + skip) % 500;
 
-    // Passe 2 : lecture par offset, formatage JSON
     size_t pos = 0;
     if (pos + 1 >= out_sz) { f.close(); return false; }
     out[pos++] = '[';

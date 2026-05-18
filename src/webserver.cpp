@@ -4,6 +4,7 @@
 #include "sd_logger.h"
 #include "types.h"
 #include "version.h"
+#include "ui.h"
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <WiFi.h>
@@ -206,10 +207,18 @@ details[open]>summary{color:var(--text)}
   </div>
 </header>
 <div id="ind-bar" class="ind-off">En attente de donnees...</div>
+<div id="scr-nav" style="display:flex;gap:6px;padding:8px 20px;border-bottom:1px solid var(--border);background:var(--card);overflow-x:auto;flex-wrap:wrap">
+  <button class="btn btn-scan" onclick="navTo(0)" style="font-size:12px;padding:5px 14px">Principal</button>
+  <button class="btn btn-scan" onclick="navTo(1)" style="font-size:12px;padding:5px 14px">Solaire</button>
+  <button class="btn btn-scan" onclick="navTo(2)" style="font-size:12px;padding:5px 14px">Reseau</button>
+  <button class="btn btn-scan" onclick="navTo(3)" style="font-size:12px;padding:5px 14px">Batterie</button>
+  <button class="btn btn-scan" onclick="navTo(4)" style="font-size:12px;padding:5px 14px">Routeur</button>
+</div>
 <nav>
   <button class="tab active" onclick="showTab('status',this)">Statut</button>
   <button class="tab" onclick="showTab('config',this)">Configuration</button>
   <button class="tab" onclick="showTab('ota',this)">Mise a jour</button>
+  <button class="tab" onclick="showTab('aide',this)">Aide</button>
 </nav>
 <main>
 
@@ -394,65 +403,13 @@ details[open]>summary{color:var(--text)}
 </div>
 </div></details>
 
-<details><summary><div class="sum-body"><span>SOLAIRE &mdash; <span id="sec-solar-lbl" style="color:var(--orange)">--</span></span><span class="sum-desc">Source de mesure de la production photovoltaique</span></div></summary>
+<details><summary><div class="sum-body"><span>SOLAIRE &mdash; <span id="sec-solar-lbl" style="color:var(--orange)">--</span></span><span class="sum-desc">Sources PV — jusqu'a 4 sources independantes</span></div><span class="sec-badge" id="sol-badge">0</span></summary>
 <div class="acc-body">
-<div class="two">
-  <label><span class="lbl">Nom affiche</span>
-    <input name="solar_name" id="solar-name-inp" maxlength="31" placeholder="Solaire" oninput="updSecLabels()">
-  </label>
-  <label><span class="lbl">Puissance crete (Wc) &mdash; jauge ecran</span>
-    <input name="solar_max_w" type="number" min="0" max="99999" placeholder="0 = desactivee">
-  </label>
-</div>
-<label><span class="lbl">Source</span>
-  <select name="solar_device" onchange="updSolar()">
-    <option value="0">-- Non configure --</option>
-    <optgroup label="DTU Hoymiles">
-      <option value="1">OpenDTU</option>
-      <option value="2">AhoyDTU</option>
-    </optgroup>
-    <optgroup label="Shelly Gen1">
-      <option value="3">Shelly Plug Gen1</option>
-      <option value="5">Shelly EM Gen1 &mdash; 1 sonde</option>
-      <option value="6">Shelly EM Gen1 &mdash; 2 sondes</option>
-      <option value="7">Shelly 3EM &mdash; 1 phase</option>
-      <option value="8">Shelly 3EM &mdash; 2 phases</option>
-      <option value="9">Shelly 3EM &mdash; 3 phases</option>
-    </optgroup>
-    <optgroup label="Shelly Gen2/Gen3">
-      <option value="4">Shelly Plug S / Plus 1PM Gen2/3</option>
-    </optgroup>
-    <optgroup label="Onduleur">
-      <option value="11">Fronius Symo / Primo / Galvo</option>
-    </optgroup>
-    <optgroup label="Domotique">
-      <option value="10">Home Assistant (entite)</option>
-    </optgroup>
-  </select>
+<label><span class="lbl">Nom affiche (agregat)</span>
+  <input name="solar_name" id="solar-name-inp" maxlength="31" placeholder="Solaire" oninput="updSecLabels()">
 </label>
-<div class="host-row">
-  <label><span class="lbl">Adresse IP / Hote</span>
-    <input name="solar_host" id="solar-host-inp" placeholder="192.168.1.x">
-  </label>
-  <select class="host-picker" onchange="applyHostPick(this,'solar-host-inp')"></select>
-</div>
-<div id="solar-ha-fields" style="display:none">
-  <label><span class="lbl">Entite puissance solaire (W)</span>
-    <input name="solar_entity" placeholder="sensor.solaredge_power" maxlength="63">
-  </label>
-  <label><span class="lbl">Entite energie solaire aujourd'hui (kWh) &mdash; optionnel</span>
-    <input name="solar_energy_entity" placeholder="sensor.solaredge_energy_today" maxlength="63">
-  </label>
-</div>
-<div id="dtu-fields" style="display:none">
-  <div id="dtu-auth" class="two">
-    <label><span class="lbl">Utilisateur OpenDTU</span><input name="solar_user" placeholder="admin"></label>
-    <label><span class="lbl">Mot de passe OpenDTU</span><input name="solar_pass" type="password"></label>
-  </div>
-  <label><span class="lbl" id="dtu-serial-lbl">Numero de serie onduleur</span>
-    <input name="solar_serial" id="dtu-serial-inp" placeholder="114181234567" maxlength="63">
-  </label>
-</div>
+<div id="sol-list"></div>
+<button type="button" class="btn btn-scan" id="sol-add-btn" onclick="addSol()">+ Ajouter une source</button>
 </div></details>
 
 <details><summary><div class="sum-body"><span>BATTERIES</span><span class="sum-desc">Stockage d'energie — puissance et etat de charge</span></div><span class="sec-badge" id="bat-badge">0</span></summary>
@@ -561,6 +518,111 @@ details[open]>summary{color:var(--text)}
 </section>
 </div>
 
+<!-- ══ Aide ══════════════════════════════════════════════════════════════════ -->
+<div id="pane-aide" style="display:none">
+<style>
+.help-h2{font-size:15px;font-weight:700;color:var(--accent);margin:22px 0 8px;border-bottom:1px solid var(--border);padding-bottom:6px}
+.help-h3{font-size:13px;font-weight:700;color:var(--text);margin:14px 0 5px}
+.help-p{font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:8px}
+.help-table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px}
+.help-table th{text-align:left;color:var(--accent);font-weight:600;padding:5px 8px;border-bottom:1px solid var(--border)}
+.help-table td{padding:5px 8px;border-bottom:1px solid #21262d;color:var(--muted)}
+.help-table td:first-child{color:var(--text);font-weight:500;white-space:nowrap}
+.help-code{font-family:monospace;font-size:12px;background:#21262d;padding:2px 6px;border-radius:4px;color:var(--orange)}
+.help-note{background:#1a2940;border-left:3px solid var(--accent);padding:10px 14px;border-radius:0 6px 6px 0;font-size:12px;color:var(--muted);margin:10px 0}
+.help-warn{background:#2d1a00;border-left:3px solid var(--orange);padding:10px 14px;border-radius:0 6px 6px 0;font-size:12px;color:#c9a14a;margin:10px 0}
+</style>
+<section>
+
+<div class="help-h2">Premier demarrage</div>
+<p class="help-p">A la mise sous tension, un point d'acces Wi-Fi <strong>DashEnergy-Config</strong> (sans mot de passe) est cree. Connectez-vous dessus et ouvrez <span class="help-code">http://192.168.4.1/</span> pour acceder a la configuration.</p>
+<ol style="font-size:13px;color:var(--muted);padding-left:20px;line-height:2">
+<li>Onglet <strong>Configuration</strong> → section <strong>Wi-Fi</strong> → entrez votre SSID + mot de passe → <strong>Sauvegarder</strong></li>
+<li>L'ESP redemarre et se connecte a votre reseau — son IP est affichee sur le port serie</li>
+<li>Acces futur via <span class="help-code">http://&lt;IP&gt;/</span> ou <span class="help-code">http://dashenergy.local/</span></li>
+<li>Configurez vos appareils (Reseau, Solaire, Batteries, Routeurs) et sauvegardez</li>
+</ol>
+<div class="help-note">Si le Wi-Fi est perdu, le point d'acces se remet en route automatiquement et l'ESP retente la connexion toutes les 30 secondes.</div>
+
+<div class="help-h2">Navigation entre ecrans</div>
+<table class="help-table">
+<tr><th>Methode</th><th>Comment</th></tr>
+<tr><td>Tactile — ecran principal</td><td>Touchez une carte pour aller sur la page de detail</td></tr>
+<tr><td>Tactile — page de detail</td><td>Touchez ← Retour pour revenir a l'ecran principal</td></tr>
+<tr><td>Interface web</td><td>Boutons de navigation dans l'onglet Statut</td></tr>
+<tr><td>API</td><td><span class="help-code">POST /api/navigate</span> avec <span class="help-code">{"screen":0}</span> (0=principal, 1=solaire, 2=reseau, 3=batterie, 4=routeur)</td></tr>
+</table>
+<div class="help-note">Retour automatique a l'ecran principal apres <strong>30 secondes</strong> d'inactivite sur une page de detail.</div>
+
+<div class="help-h2">Configuration des appareils</div>
+
+<div class="help-h3">Reseau electrique</div>
+<table class="help-table">
+<tr><th>Type</th><th>Champ « Adresse »</th></tr>
+<tr><td>Shelly EM / 3EM / Pro</td><td>IP de la Shelly (ex : 192.168.1.50)</td></tr>
+<tr><td>F1ATB</td><td>IP du routeur F1ATB</td></tr>
+<tr><td>Home Assistant</td><td>IP:port du serveur HA (ex : 192.168.1.10:8123)</td></tr>
+</table>
+<p class="help-p">Pour Home Assistant, renseignez le <strong>Token HA</strong> dans la section dediee (Profil HA → Securite → Jetons d'acces longue duree).</p>
+<div class="help-warn">Puissance positive = import (vous achetez). Puissance negative = export (vous revendez). Ajustez votre entite HA si necessaire.</div>
+
+<div class="help-h3">Solaire (jusqu'a 4 sources)</div>
+<table class="help-table">
+<tr><th>Type</th><th>Champ « Adresse »</th><th>Champ specifique</th></tr>
+<tr><td>OpenDTU</td><td>IP du DTU</td><td>Numero de serie onduleur</td></tr>
+<tr><td>AhoyDTU</td><td>IP du DTU</td><td>Numero de serie onduleur</td></tr>
+<tr><td>Fronius</td><td>IP de l'onduleur</td><td>—</td></tr>
+<tr><td>Shelly Plug / EM / 3EM</td><td>IP de la Shelly</td><td>—</td></tr>
+<tr><td>Home Assistant</td><td>IP:port HA</td><td>Entite puissance + entite energie (optionnel)</td></tr>
+</table>
+<p class="help-p">La puissance max (W) sert a calibrer la barre de progression sur l'ecran principal.</p>
+
+<div class="help-h3">Batteries (jusqu'a 4)</div>
+<table class="help-table">
+<tr><th>Type</th><th>Adresse</th><th>Entites requises</th></tr>
+<tr><td>ESPHome JK-BMS</td><td>IP de l'ESP ESPHome</td><td>Automatique (web_server)</td></tr>
+<tr><td>Home Assistant</td><td>IP:port HA</td><td>Puissance (W) + SOC (%)</td></tr>
+</table>
+
+<div class="help-h3">Routeurs solaires (jusqu'a 4)</div>
+<table class="help-table">
+<tr><th>Type</th><th>Entites HA sugginees</th></tr>
+<tr><td>F1ATB</td><td>Adresse IP du F1ATB — puissance + duree automatiques</td></tr>
+<tr><td>Home Assistant</td><td>Puissance (W), energie (kWh), duree (h), triac (%)</td></tr>
+</table>
+
+<div class="help-h2">Carte SD</div>
+<p class="help-p">La carte SD (<strong>FAT32</strong>) conserve l'energie hebdomadaire et mensuelle entre les redemarrages. Sans carte SD, ces donnees sont perdues a chaque coupure de courant.</p>
+<table class="help-table">
+<tr><th>Fichier</th><th>Contenu</th></tr>
+<tr><td><span class="help-code">daily.bin</span></td><td>Baselines journalieres reseau + solaire</td></tr>
+<tr><td><span class="help-code">period.bin</span></td><td>Bases hebdo/mensuelles tous appareils</td></tr>
+<tr><td><span class="help-code">day_ring.bin</span></td><td>Courbe journaliere (288 pts × 5 min)</td></tr>
+<tr><td><span class="help-code">log.csv</span></td><td>Historique CSV horodate</td></tr>
+</table>
+
+<div class="help-h2">Mise a jour firmware (OTA)</div>
+<p class="help-p">Allez dans l'onglet <strong>Mise a jour</strong>, selectionnez le fichier <span class="help-code">.pio/build/jc8048w550/firmware.bin</span> et cliquez <strong>Flasher</strong>. L'ESP redemarrera automatiquement.</p>
+
+<div class="help-h2">Depannage rapide</div>
+<table class="help-table">
+<tr><th>Probleme</th><th>Solution</th></tr>
+<tr><td>Ecran blanc</td><td>Verifiez que le firmware jc8048w550 est flash. Regardez le port serie.</td></tr>
+<tr><td>Tactile inversé</td><td>Changez l'orientation 0 ↔ 2 dans Configuration → General</td></tr>
+<tr><td>Aucune donnee</td><td>Activez le mode demo pour tester l'affichage. Verifiez l'IP de chaque appareil.</td></tr>
+<tr><td>Energie repart de zero</td><td>Normal sans SD. Avec SD : verifiez que sd_ready=true dans /api/status</td></tr>
+<tr><td>Wi-Fi introuvable</td><td>Verifiez que c'est un reseau 2.4 GHz (le 5 GHz n'est pas supporte)</td></tr>
+<tr><td>Interface web lente</td><td>Redemarrez via Configuration → Redemarrer l'ESP</td></tr>
+</table>
+
+<div class="help-h2">A propos</div>
+<p class="help-p">Dash Energy <span id="aide-ver"></span> — firmware open-source pour ESP32-S3 JC8048W550</p>
+<p class="help-p">Code source et documentation : <strong>github.com/Alex77138/Energy-Dashboard</strong></p>
+<script>document.getElementById('aide-ver').textContent=document.querySelector('.ver')?document.querySelector('.ver').textContent:'';</script>
+
+</section>
+</div><!-- pane-aide -->
+
 </main>
 <div class="toast" id="toast"></div>
 <script>
@@ -569,7 +631,7 @@ var tid=null, dayTid=null, chDay=null;
 function showTab(name,btn){
   document.querySelectorAll('.tab').forEach(function(b){b.classList.remove('active');});
   btn.classList.add('active');
-  ['status','config','ota'].forEach(function(p){
+  ['status','config','ota','aide'].forEach(function(p){
     document.getElementById('pane-'+p).style.display=(p===name?'':'none');
   });
   if(name==='status'){startRefresh();}
@@ -580,28 +642,14 @@ function showTab(name,btn){
   }
 }
 
-function updSolar(){
-  var v=parseInt(document.querySelector('[name=solar_device]').value);
-  var isDtu=(v===1||v===2);
-  var isHa=(v===10);
-  document.getElementById('dtu-fields').style.display=isDtu?'':'none';
-  document.getElementById('solar-ha-fields').style.display=isHa?'':'none';
-  if(isDtu){
-    var isAhoy=(v===2);
-    document.getElementById('dtu-auth').style.display=isAhoy?'none':'';
-    document.getElementById('dtu-serial-lbl').textContent=isAhoy?'ID onduleur (0, 1, 2...)':'Numero de serie onduleur';
-    document.getElementById('dtu-serial-inp').placeholder=isAhoy?'0':'114181234567';
-  }
-  updHaSection();
-}
 function updGrid(){
   var v=parseInt(document.querySelector('[name=grid_device]').value);
   var isHa=(v===9);
   document.getElementById('grid-ha-fields').style.display=isHa?'':'none';
   updHaSection();
 }
-/* ── Multi-items : batteries / routeurs / hotes ── */
-var batState=[], rtrState=[], hostState=[];
+/* ── Multi-items : batteries / routeurs / hotes / solaires ── */
+var batState=[], rtrState=[], hostState=[], solarState=[];
 
 function hpOpts(){
   var s='<option value="">-- Choisir --</option>';
@@ -621,12 +669,98 @@ function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').repl
 
 function updHaSection(){
   var gv=parseInt(document.querySelector('[name=grid_device]').value);
-  var sv=parseInt(document.querySelector('[name=solar_device]').value);
-  var needHa=(gv===9||sv===10);
+  var needHa=(gv===9);
+  if(!needHa)(solarState||[]).forEach(function(s){if(s.device==10)needHa=true;});
   if(!needHa)(batState||[]).forEach(function(b){if(b.device==2)needHa=true;});
   if(!needHa)(rtrState||[]).forEach(function(r){if(r.device==1)needHa=true;});
   document.getElementById('ha-section').style.display=needHa?'':'none';
 }
+
+/* ── Solaires (multi-source) ── */
+function solHtml(s,i){
+  var devs=[
+    {v:0,l:'-- Non configure --'},
+    {v:1,l:'OpenDTU'},{v:2,l:'AhoyDTU'},
+    {v:3,l:'Shelly Plug Gen1'},{v:4,l:'Shelly Plug S/Plus Gen2/3'},
+    {v:5,l:'Shelly EM Gen1 &mdash; 1 sonde'},{v:6,l:'Shelly EM Gen1 &mdash; 2 sondes'},
+    {v:7,l:'Shelly 3EM &mdash; 1 phase'},{v:8,l:'Shelly 3EM &mdash; 2 phases'},{v:9,l:'Shelly 3EM &mdash; 3 phases'},
+    {v:10,l:'Home Assistant'},{v:11,l:'Fronius'}
+  ];
+  var sel='<select onchange="updSolItem('+i+')">';
+  devs.forEach(function(o){sel+='<option value="'+o.v+'"'+(s.device==o.v?' selected':'')+'>'+o.l+'</option>';});
+  sel+='</select>';
+  var isDtu=(s.device==1||s.device==2);var isHa=(s.device==10);var hasIp=(s.device>0&&!isHa);
+  return '<div class="multi-item" id="sol-item-'+i+'">'
+    +'<div class="multi-hd"><span id="sname-hd-'+i+'">'+(s.name||('Source '+(i+1)))+'</span>'
+    +'<button type="button" class="btn-del" onclick="removeSol('+i+')">Supprimer</button></div>'
+    +'<div class="two"><label><span class="lbl">Nom</span>'
+    +'<input id="sname-'+i+'" value="'+esc(s.name||'')+'" placeholder="Source '+(i+1)+'" maxlength="31" oninput="liveSolName('+i+')">'
+    +'</label><label><span class="lbl">Type</span>'+sel+'</label></div>'
+    +'<label><span class="lbl">Puissance crete (Wc) &mdash; jauge ecran</span>'
+    +'<input id="smaxw-'+i+'" type="number" min="0" max="99999" value="'+(s.max_w||0)+'" placeholder="0 = desactivee"></label>'
+    +'<div id="sip-'+i+'" style="display:'+(hasIp?'':'none')+'" class="host-row">'
+    +'<label><span class="lbl">Adresse IP / Hote</span><input id="shost-'+i+'" value="'+esc(s.host||'')+'" placeholder="192.168.1.x"></label>'
+    +'<select class="host-picker" onchange="applyHostPick(this,\'shost-'+i+'\')">'+hpOpts()+'</select></div>'
+    +'<div id="sha-'+i+'" style="display:'+(isHa?'':'none')+'">'
+    +'<div class="host-row"><label><span class="lbl">Adresse Home Assistant (host:port)</span>'
+    +'<input id="shahost-'+i+'" value="'+esc(s.host||'')+'" placeholder="192.168.1.x:8123"></label>'
+    +'<select class="host-picker" onchange="applyHostPick(this,\'shahost-'+i+'\')">'+hpOpts()+'</select></div>'
+    +'<label><span class="lbl">Entite puissance (W)</span><input id="sent-'+i+'" value="'+esc(s.entity||'')+'" placeholder="sensor.solar_power" maxlength="63"></label>'
+    +'<label><span class="lbl">Entite energie aujourd\'hui (kWh)</span><input id="senent-'+i+'" value="'+esc(s.energy_entity||'')+'" placeholder="sensor.solar_energy_today" maxlength="63"></label>'
+    +'</div>'
+    +'<div id="sdtu-'+i+'" style="display:'+(isDtu?'':'none')+'">'
+    +'<div id="sdtu-auth-'+i+'" style="display:'+(s.device==1?'':'none')+'" class="two">'
+    +'<label><span class="lbl">Utilisateur</span><input id="suser-'+i+'" value="'+esc(s.user||'admin')+'"></label>'
+    +'<label><span class="lbl">Mot de passe</span><input id="spass-'+i+'" type="password" value="'+esc(s.pass||'')+'"></label></div>'
+    +'<label><span class="lbl">Numero de serie onduleur</span><input id="sser-'+i+'" value="'+esc(s.serial||'')+'" placeholder="114181234567" maxlength="63"></label>'
+    +'</div></div>';
+}
+function liveSolName(i){
+  var v=(document.getElementById('sname-'+i)||{}).value||'Source '+(i+1);
+  var hd=document.getElementById('sname-hd-'+i);if(hd)hd.textContent=v;
+}
+function renderSolList(){
+  var h='';solarState.forEach(function(s,i){h+=solHtml(s,i);});
+  document.getElementById('sol-list').innerHTML=h;
+  document.getElementById('sol-add-btn').style.display=solarState.length>=4?'none':'';
+  document.getElementById('sol-badge').textContent=solarState.length;
+  updHaSection();rebuildPickers();
+}
+function updSolItem(i){
+  var v=parseInt(document.querySelector('#sol-item-'+i+' select').value);
+  solarState[i].device=v;
+  var isDtu=(v==1||v==2);var isHa=(v==10);var hasIp=(v>0&&!isHa);
+  document.getElementById('sip-'+i).style.display=hasIp?'':'none';
+  document.getElementById('sha-'+i).style.display=isHa?'':'none';
+  document.getElementById('sdtu-'+i).style.display=isDtu?'':'none';
+  if(isDtu)document.getElementById('sdtu-auth-'+i).style.display=v==1?'':'none';
+  updHaSection();
+}
+function addSol(){
+  if(solarState.length>=4)return;
+  solarState.push({device:0,name:'',host:'',max_w:0,user:'admin',pass:'',serial:'',entity:'',energy_entity:''});
+  renderSolList();
+}
+function removeSol(i){solarState.splice(i,1);renderSolList();}
+function readSolState(){solarState.forEach(function(s,i){
+  s.name=(document.getElementById('sname-'+i)||{}).value||'';
+  s.device=parseInt((document.querySelector('#sol-item-'+i+' select')||{}).value)||0;
+  s.max_w=parseInt((document.getElementById('smaxw-'+i)||{}).value)||0;
+  var isHa=(s.device==10);var isDtu=(s.device==1||s.device==2);
+  if(isHa){
+    s.host=(document.getElementById('shahost-'+i)||{}).value||'';
+    s.entity=(document.getElementById('sent-'+i)||{}).value||'';
+    s.energy_entity=(document.getElementById('senent-'+i)||{}).value||'';
+  }else{
+    s.host=(document.getElementById('shost-'+i)||{}).value||'';
+    s.entity='';s.energy_entity='';
+  }
+  if(isDtu){
+    s.user=(document.getElementById('suser-'+i)||{}).value||'admin';
+    s.pass=(document.getElementById('spass-'+i)||{}).value||'';
+    s.serial=(document.getElementById('sser-'+i)||{}).value||'';
+  }
+});}
 
 function updSecLabels(){
   var gn=document.getElementById('grid-name-inp');
@@ -1022,25 +1156,18 @@ function loadCfg(){
     f.elements.solar_name.value=c.solar_name||'Solaire';
     f.elements.grid_device.value=c.grid_device||0;
     f.elements.grid_host.value=c.grid_host||'';
-    f.elements.solar_device.value=c.solar_device||0;
-    f.elements.solar_host.value=c.solar_host||'';
-    f.elements.solar_user.value=c.solar_user||'';
-    f.elements.solar_pass.value=c.solar_pass||'';
-    f.elements.solar_serial.value=c.solar_serial||'';
-    f.elements.solar_max_w.value=c.solar_max_w||0;
     f.elements.display_rotation.value=c.display_rotation||0;
     f.elements.grid_entity.value=c.grid_entity||'';
-    f.elements.solar_entity.value=c.solar_entity||'';
     f.elements.ha_token.value=c.ha_token||'';
     f.elements.timezone.value=c.timezone||'CET-1CEST,M3.5.0,M10.5.0/3';
-    updSolar();
+    f.elements.grid_energy_entity.value=c.grid_energy_entity||'';
     updGrid();
     updSecLabels();
-    f.elements.grid_energy_entity.value=c.grid_energy_entity||'';
-    f.elements.solar_energy_entity.value=c.solar_energy_entity||'';
+    solarState=(c.solars||[]).filter(function(s){return s.device>0;});
     hostState=(c.hosts||[]).filter(function(h){return h.name||h.ip;});
     batState=(c.batteries||[]).filter(function(b){return b.device>0;});
     rtrState=(c.routers||[]).filter(function(r){return r.device>0;});
+    renderSolList();
     renderHostList();
     renderBatList();
     renderRtrList();
@@ -1070,19 +1197,17 @@ function loadCfg(){
 
 function saveCfg(e){
   e.preventDefault();
-  readHostState(); readBatState(); readRtrState();
+  readSolState(); readHostState(); readBatState(); readRtrState();
   var fd=new FormData(e.target),data={};
   fd.forEach(function(v,k){data[k]=v;});
   data.grid_device=parseInt(data.grid_device)||0;
-  data.solar_device=parseInt(data.solar_device)||0;
-  data.solar_max_w=parseInt(data.solar_max_w)||0;
   data.display_rotation=parseInt(data.display_rotation)||0;
   data.ha_token=data.ha_token||'';
   data.grid_entity=data.grid_entity||'';
-  data.solar_entity=data.solar_entity||'';
   data.timezone=data.timezone||'CET-1CEST,M3.5.0,M10.5.0/3';
   data.grid_name=data.grid_name||'Réseau';
   data.solar_name=data.solar_name||'Solaire';
+  data.solars=solarState;
   data.hosts=hostState.filter(function(h){return h.name||h.ip;});
   data.batteries=batState;
   data.routers=rtrState;
@@ -1197,6 +1322,13 @@ function doOta(e){
   xhr.send(fd);
 }
 
+/* ── Navigation ecran ── */
+function navTo(n){
+  fetch('/api/navigate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({screen:n})})
+    .then(function(r){if(r.ok)toast('Ecran '+['Principal','Solaire','Reseau','Batterie','Routeur'][n],'ok');else toast('Erreur navigation','err');})
+    .catch(function(){toast('Erreur reseau','err');});
+}
+
 startRefresh();
 </script>
 </body>
@@ -1210,12 +1342,14 @@ static void handle_root() {
 static void handle_status() {
     GridData    grid    = {};
     SolarData   solar   = {};
+    SolarData   solar_src[MAX_SOLAR] = {};
     BatteryData batteries[MAX_BATTERIES] = {};
     RouterData  routers[MAX_ROUTERS]     = {};
 
     if (g_data.mutex && xSemaphoreTake(g_data.mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         grid  = g_data.grid;
         solar = g_data.solar;
+        memcpy(solar_src, g_data.solar_src, sizeof(solar_src));
         memcpy(batteries, g_data.batteries, sizeof(batteries));
         memcpy(routers,   g_data.routers,   sizeof(routers));
         xSemaphoreGive(g_data.mutex);
@@ -1256,61 +1390,111 @@ static void handle_status() {
     }
 
     auto g = doc["grid"].to<JsonObject>();
-    g["online"]    = grid.online;
-    g["power_w"]   = grid.power_w;
-    g["today_kwh"] = grid.today_kwh;
-    g["device"]    = grid_device_label(g_cfg.grid_device);
-    g["host"]      = g_cfg.grid_host;
+    g["online"]     = grid.online;
+    g["power_w"]    = grid.power_w;
+    g["today_kwh"]  = grid.today_kwh;
+    g["week_kwh"]   = grid.week_kwh;
+    g["month_kwh"]  = grid.month_kwh;
+    g["voltage_v"]  = grid.voltage_v;
+    g["current_a"]  = grid.current_a;
+    g["device"]     = grid_device_label(g_cfg.grid_device);
+    g["host"]       = g_cfg.grid_host;
 
+    // Aggregate solar total + per-source array
+    uint32_t total_max_w = 0;
+    int first_active = -1;
+    for (int i = 0; i < MAX_SOLAR; i++) {
+        if (g_cfg.solars[i].device == SolarDevice::NONE) continue;
+        total_max_w += g_cfg.solars[i].max_w;
+        if (first_active < 0) first_active = i;
+    }
     auto s = doc["solar"].to<JsonObject>();
     s["online"]     = solar.online;
     s["power_w"]    = solar.power_w;
     s["today_kwh"]  = solar.today_kwh;
-    s["dc_voltage"] = solar.dc_voltage;
-    s["limit_pct"]  = solar.limit_pct;
-    s["device"]     = solar_device_label(g_cfg.solar_device);
-    s["host"]       = g_cfg.solar_host;
-    s["is_opendtu"] = (g_cfg.solar_device == SolarDevice::OPENDTU);
-    s["max_w"]      = g_cfg.solar_max_w;
+    s["week_kwh"]   = solar.week_kwh;
+    s["month_kwh"]  = solar.month_kwh;
+    s["voltage_v"]  = solar.voltage_v;
+    s["current_a"]  = solar.current_a;
+    s["max_w"]      = total_max_w;
+    s["dc_voltage"] = (first_active >= 0) ? solar_src[first_active].dc_voltage : 0.0f;
+    s["limit_pct"]  = (first_active >= 0) ? solar_src[first_active].limit_pct  : 0;
+    s["is_opendtu"] = (first_active >= 0 &&
+                       g_cfg.solars[first_active].device == SolarDevice::OPENDTU);
+    auto srcArr = s["sources"].to<JsonArray>();
+    for (int i = 0; i < MAX_SOLAR; i++) {
+        if (g_cfg.solars[i].device == SolarDevice::NONE) continue;
+        auto src = srcArr.add<JsonObject>();
+        src["idx"]          = i;
+        src["name"]         = g_cfg.solars[i].name;
+        src["device"]       = solar_device_label(g_cfg.solars[i].device);
+        src["host"]         = g_cfg.solars[i].host;
+        src["max_w"]        = g_cfg.solars[i].max_w;
+        src["online"]       = solar_src[i].online;
+        src["power_w"]      = solar_src[i].power_w;
+        src["today_kwh"]    = solar_src[i].today_kwh;
+        src["week_kwh"]     = solar_src[i].week_kwh;
+        src["month_kwh"]    = solar_src[i].month_kwh;
+        src["voltage_v"]    = solar_src[i].voltage_v;
+        src["current_a"]    = solar_src[i].current_a;
+        src["dc_voltage"]   = solar_src[i].dc_voltage;
+        src["limit_pct"]    = solar_src[i].limit_pct;
+    }
 
     auto bats = doc["batteries"].to<JsonArray>();
     for (int i = 0; i < MAX_BATTERIES; i++) {
         if (g_cfg.batteries[i].device == BatteryDevice::NONE) continue;
         auto b = bats.add<JsonObject>();
-        b["idx"]     = i;
-        b["name"]    = g_cfg.batteries[i].name;
-        b["online"]  = batteries[i].online;
-        b["power_w"] = batteries[i].power_w;
-        b["soc_pct"] = batteries[i].soc_pct;
-        b["device"]  = battery_device_label(g_cfg.batteries[i].device);
+        b["idx"]       = i;
+        b["name"]      = g_cfg.batteries[i].name;
+        b["online"]    = batteries[i].online;
+        b["power_w"]   = batteries[i].power_w;
+        b["voltage_v"] = batteries[i].voltage_v;
+        b["current_a"] = batteries[i].current_a;
+        b["soc_pct"]   = batteries[i].soc_pct;
+        b["week_kwh"]  = batteries[i].week_kwh;
+        b["month_kwh"] = batteries[i].month_kwh;
+        b["device"]    = battery_device_label(g_cfg.batteries[i].device);
     }
     auto rtrs = doc["routers"].to<JsonArray>();
     bool f1atb_direct = (g_cfg.grid_device == GridDevice::F1ATB &&
                          g_cfg.routers[0].device == RouterDevice::NONE);
     if (f1atb_direct) {
         auto r = rtrs.add<JsonObject>();
-        r["idx"]        = 0;
-        r["name"]       = g_cfg.routers[0].name;
-        r["online"]     = routers[0].online;
-        r["power_w"]    = routers[0].power_w;
-        r["triac_pct"]  = routers[0].triac_pct;
-        r["today_kwh"]  = routers[0].today_kwh;
-        r["duration_h"] = routers[0].duration_h;
-        r["active"]     = routers[0].active;
-        r["device"]     = "F1ATB direct";
+        r["idx"]              = 0;
+        r["name"]             = g_cfg.routers[0].name;
+        r["online"]           = routers[0].online;
+        r["power_w"]          = routers[0].power_w;
+        r["voltage_v"]        = routers[0].voltage_v;
+        r["current_a"]        = routers[0].current_a;
+        r["triac_pct"]        = routers[0].triac_pct;
+        r["today_kwh"]        = routers[0].today_kwh;
+        r["week_kwh"]         = routers[0].week_kwh;
+        r["month_kwh"]        = routers[0].month_kwh;
+        r["duration_h"]       = routers[0].duration_h;
+        r["week_duration_h"]  = routers[0].week_duration_h;
+        r["month_duration_h"] = routers[0].month_duration_h;
+        r["active"]           = routers[0].active;
+        r["device"]           = "F1ATB direct";
     }
     for (int i = 0; i < MAX_ROUTERS; i++) {
         if (g_cfg.routers[i].device == RouterDevice::NONE) continue;
         auto r = rtrs.add<JsonObject>();
-        r["idx"]        = i;
-        r["name"]       = g_cfg.routers[i].name;
-        r["online"]     = routers[i].online;
-        r["power_w"]    = routers[i].power_w;
-        r["triac_pct"]  = routers[i].triac_pct;
-        r["today_kwh"]  = routers[i].today_kwh;
-        r["duration_h"] = routers[i].duration_h;
-        r["active"]     = routers[i].active;
-        r["device"]     = router_device_label(g_cfg.routers[i].device);
+        r["idx"]              = i;
+        r["name"]             = g_cfg.routers[i].name;
+        r["online"]           = routers[i].online;
+        r["power_w"]          = routers[i].power_w;
+        r["voltage_v"]        = routers[i].voltage_v;
+        r["current_a"]        = routers[i].current_a;
+        r["triac_pct"]        = routers[i].triac_pct;
+        r["today_kwh"]        = routers[i].today_kwh;
+        r["week_kwh"]         = routers[i].week_kwh;
+        r["month_kwh"]        = routers[i].month_kwh;
+        r["duration_h"]       = routers[i].duration_h;
+        r["week_duration_h"]  = routers[i].week_duration_h;
+        r["month_duration_h"] = routers[i].month_duration_h;
+        r["active"]           = routers[i].active;
+        r["device"]           = router_device_label(g_cfg.routers[i].device);
     }
 
     String out;
@@ -1371,33 +1555,43 @@ static void handle_daily() {
 
 static void handle_config_get() {
     JsonDocument doc;
-    doc["device_name"]  = g_cfg.device_name;
-    doc["grid_name"]    = g_cfg.grid_name;
-    doc["solar_name"]   = g_cfg.solar_name;
-    doc["grid_device"]  = (int)g_cfg.grid_device;
-    doc["grid_host"]    = g_cfg.grid_host;
-    doc["solar_device"] = (int)g_cfg.solar_device;
-    doc["solar_host"]   = g_cfg.solar_host;
-    doc["solar_user"]   = g_cfg.solar_user;
-    doc["solar_pass"]   = g_cfg.solar_pass;
-    doc["solar_serial"] = g_cfg.solar_serial;
-    doc["solar_max_w"]       = g_cfg.solar_max_w;
-    doc["display_rotation"]  = g_cfg.display_rotation;
-    doc["ha_token"]          = g_cfg.ha_token;
-    doc["grid_entity"]       = g_cfg.grid_entity;
-    doc["solar_entity"]      = g_cfg.solar_entity;
-    doc["timezone"]          = g_cfg.timezone;
-    doc["grid_energy_entity"]  = g_cfg.grid_energy_entity;
-    doc["solar_energy_entity"] = g_cfg.solar_energy_entity;
+    doc["device_name"]          = g_cfg.device_name;
+    doc["grid_name"]            = g_cfg.grid_name;
+    doc["solar_name"]           = g_cfg.solar_name;
+    doc["grid_device"]          = (int)g_cfg.grid_device;
+    doc["grid_host"]            = g_cfg.grid_host;
+    doc["display_rotation"]     = g_cfg.display_rotation;
+    doc["ha_token"]             = g_cfg.ha_token;
+    doc["grid_entity"]          = g_cfg.grid_entity;
+    doc["grid_energy_entity"]   = g_cfg.grid_energy_entity;
+    doc["grid_voltage_entity"]  = g_cfg.grid_voltage_entity;
+    doc["grid_current_entity"]  = g_cfg.grid_current_entity;
+    doc["timezone"]             = g_cfg.timezone;
+
+    auto solArr = doc["solars"].to<JsonArray>();
+    for (int i = 0; i < MAX_SOLAR; i++) {
+        auto s = solArr.add<JsonObject>();
+        s["device"]        = (int)g_cfg.solars[i].device;
+        s["name"]          = g_cfg.solars[i].name;
+        s["host"]          = g_cfg.solars[i].host;
+        s["user"]          = g_cfg.solars[i].user;
+        s["pass"]          = g_cfg.solars[i].pass;
+        s["serial"]        = g_cfg.solars[i].serial;
+        s["max_w"]         = g_cfg.solars[i].max_w;
+        s["entity"]        = g_cfg.solars[i].entity;
+        s["energy_entity"] = g_cfg.solars[i].energy_entity;
+    }
 
     auto batArr = doc["batteries"].to<JsonArray>();
     for (int i = 0; i < MAX_BATTERIES; i++) {
         auto b = batArr.add<JsonObject>();
-        b["device"]       = (int)g_cfg.batteries[i].device;
-        b["name"]         = g_cfg.batteries[i].name;
-        b["host"]         = g_cfg.batteries[i].host;
-        b["power_entity"] = g_cfg.batteries[i].power_entity;
-        b["soc_entity"]   = g_cfg.batteries[i].soc_entity;
+        b["device"]          = (int)g_cfg.batteries[i].device;
+        b["name"]            = g_cfg.batteries[i].name;
+        b["host"]            = g_cfg.batteries[i].host;
+        b["power_entity"]    = g_cfg.batteries[i].power_entity;
+        b["soc_entity"]      = g_cfg.batteries[i].soc_entity;
+        b["voltage_entity"]  = g_cfg.batteries[i].voltage_entity;
+        b["current_entity"]  = g_cfg.batteries[i].current_entity;
     }
     auto rtrArr = doc["routers"].to<JsonArray>();
     for (int i = 0; i < MAX_ROUTERS; i++) {
@@ -1410,6 +1604,8 @@ static void handle_config_get() {
         r["active_entity"]    = g_cfg.routers[i].active_entity;
         r["duration_entity"]  = g_cfg.routers[i].duration_entity;
         r["triac_entity"]     = g_cfg.routers[i].triac_entity;
+        r["voltage_entity"]   = g_cfg.routers[i].voltage_entity;
+        r["current_entity"]   = g_cfg.routers[i].current_entity;
     }
     auto hostsArr = doc["hosts"].to<JsonArray>();
     for (int i = 0; i < MAX_HOSTS; i++) {
@@ -1461,21 +1657,33 @@ static void handle_config_post() {
     strncpy(cfg.device_name,  doc["device_name"]  | cfg.device_name,  sizeof(cfg.device_name)  - 1);
     strncpy(cfg.grid_name,    doc["grid_name"]    | cfg.grid_name,    sizeof(cfg.grid_name)    - 1);
     strncpy(cfg.solar_name,   doc["solar_name"]   | cfg.solar_name,   sizeof(cfg.solar_name)   - 1);
-    cfg.grid_device = (GridDevice)(int)(doc["grid_device"] | (int)cfg.grid_device);
-    strncpy(cfg.grid_host,    doc["grid_host"]    | cfg.grid_host,    sizeof(cfg.grid_host)    - 1);
-    cfg.solar_device = (SolarDevice)(int)(doc["solar_device"] | (int)cfg.solar_device);
-    strncpy(cfg.solar_host,   doc["solar_host"]   | cfg.solar_host,   sizeof(cfg.solar_host)   - 1);
-    strncpy(cfg.solar_user,   doc["solar_user"]   | cfg.solar_user,   sizeof(cfg.solar_user)   - 1);
-    strncpy(cfg.solar_pass,   doc["solar_pass"]   | cfg.solar_pass,   sizeof(cfg.solar_pass)   - 1);
-    strncpy(cfg.solar_serial, doc["solar_serial"] | cfg.solar_serial, sizeof(cfg.solar_serial) - 1);
-    cfg.solar_max_w       = (uint16_t)(int)(doc["solar_max_w"]      | (int)cfg.solar_max_w);
-    cfg.display_rotation  = (uint8_t)(int)(doc["display_rotation"] | (int)cfg.display_rotation);
-    strncpy(cfg.ha_token,     doc["ha_token"]     | cfg.ha_token,     sizeof(cfg.ha_token)     - 1);
-    strncpy(cfg.grid_entity,  doc["grid_entity"]  | cfg.grid_entity,  sizeof(cfg.grid_entity)  - 1);
-    strncpy(cfg.solar_entity, doc["solar_entity"] | cfg.solar_entity, sizeof(cfg.solar_entity) - 1);
-    strncpy(cfg.timezone,     doc["timezone"]     | cfg.timezone,     sizeof(cfg.timezone)     - 1);
+    cfg.grid_device      = (GridDevice)(int)(doc["grid_device"] | (int)cfg.grid_device);
+    strncpy(cfg.grid_host,           doc["grid_host"]           | cfg.grid_host,           sizeof(cfg.grid_host)           - 1);
+    strncpy(cfg.grid_entity,         doc["grid_entity"]         | cfg.grid_entity,         sizeof(cfg.grid_entity)         - 1);
     strncpy(cfg.grid_energy_entity,  doc["grid_energy_entity"]  | cfg.grid_energy_entity,  sizeof(cfg.grid_energy_entity)  - 1);
-    strncpy(cfg.solar_energy_entity, doc["solar_energy_entity"] | cfg.solar_energy_entity, sizeof(cfg.solar_energy_entity) - 1);
+    strncpy(cfg.grid_voltage_entity, doc["grid_voltage_entity"] | cfg.grid_voltage_entity, sizeof(cfg.grid_voltage_entity) - 1);
+    strncpy(cfg.grid_current_entity, doc["grid_current_entity"] | cfg.grid_current_entity, sizeof(cfg.grid_current_entity) - 1);
+    cfg.display_rotation = (uint8_t)(int)(doc["display_rotation"] | (int)cfg.display_rotation);
+    strncpy(cfg.ha_token,  doc["ha_token"]  | cfg.ha_token,  sizeof(cfg.ha_token)  - 1);
+    strncpy(cfg.timezone,  doc["timezone"]  | cfg.timezone,  sizeof(cfg.timezone)  - 1);
+
+    if (doc["solars"].is<JsonArray>()) {
+        JsonArrayConst solArr = doc["solars"].as<JsonArrayConst>();
+        for (int i = 0; i < MAX_SOLAR; i++) cfg.solars[i] = {};
+        int n = (int)solArr.size(); if (n > MAX_SOLAR) n = MAX_SOLAR;
+        for (int i = 0; i < n; i++) {
+            JsonObjectConst s = solArr[i];
+            cfg.solars[i].device = (SolarDevice)(int)(s["device"] | 0);
+            strncpy(cfg.solars[i].name,          s["name"]          | "", 31);
+            strncpy(cfg.solars[i].host,          s["host"]          | "", 63);
+            strncpy(cfg.solars[i].user,          s["user"]          | "admin", 31);
+            strncpy(cfg.solars[i].pass,          s["pass"]          | "", 31);
+            strncpy(cfg.solars[i].serial,        s["serial"]        | "", 63);
+            cfg.solars[i].max_w = (uint16_t)(int)(s["max_w"] | 0);
+            strncpy(cfg.solars[i].entity,        s["entity"]        | "", 63);
+            strncpy(cfg.solars[i].energy_entity, s["energy_entity"] | "", 63);
+        }
+    }
 
     if (doc["batteries"].is<JsonArray>()) {
         JsonArrayConst batArr = doc["batteries"].as<JsonArrayConst>();
@@ -1484,10 +1692,12 @@ static void handle_config_post() {
         for (int i = 0; i < n; i++) {
             JsonObjectConst b = batArr[i];
             cfg.batteries[i].device = (BatteryDevice)(int)(b["device"] | 0);
-            strncpy(cfg.batteries[i].name,         b["name"]         | "", 31);
-            strncpy(cfg.batteries[i].host,         b["host"]         | "", 63);
-            strncpy(cfg.batteries[i].power_entity, b["power_entity"] | "", 63);
-            strncpy(cfg.batteries[i].soc_entity,   b["soc_entity"]   | "", 63);
+            strncpy(cfg.batteries[i].name,           b["name"]           | "", 31);
+            strncpy(cfg.batteries[i].host,           b["host"]           | "", 63);
+            strncpy(cfg.batteries[i].power_entity,   b["power_entity"]   | "", 63);
+            strncpy(cfg.batteries[i].soc_entity,     b["soc_entity"]     | "", 63);
+            strncpy(cfg.batteries[i].voltage_entity, b["voltage_entity"] | "", 63);
+            strncpy(cfg.batteries[i].current_entity, b["current_entity"] | "", 63);
         }
     }
     if (doc["routers"].is<JsonArray>()) {
@@ -1504,6 +1714,8 @@ static void handle_config_post() {
             strncpy(cfg.routers[i].active_entity,   r["active_entity"]   | "", 63);
             strncpy(cfg.routers[i].duration_entity, r["duration_entity"] | "", 63);
             strncpy(cfg.routers[i].triac_entity,    r["triac_entity"]    | "", 63);
+            strncpy(cfg.routers[i].voltage_entity,  r["voltage_entity"]  | "", 63);
+            strncpy(cfg.routers[i].current_entity,  r["current_entity"]  | "", 63);
         }
     }
 
@@ -1709,6 +1921,22 @@ static void handle_demo_toggle() {
     server.send(200, "application/json", new_state ? "{\"demo\":true}" : "{\"demo\":false}");
 }
 
+static void handle_navigate() {
+    String body = server.arg("plain");
+    JsonDocument doc;
+    if (deserializeJson(doc, body)) {
+        server.send(400, "application/json", "{\"error\":\"json invalide\"}");
+        return;
+    }
+    int screen = doc["screen"] | 0;
+    if (screen < 0 || screen > 4) {
+        server.send(400, "application/json", "{\"error\":\"ecran invalide\"}");
+        return;
+    }
+    ui_navigate_request(screen);
+    server.send(200, "application/json", "{\"ok\":true}");
+}
+
 static void handle_restart() {
     server.send(200, "application/json", "{\"ok\":true}");
     delay(300);
@@ -1737,6 +1965,7 @@ static void web_task(void *) {
     server.on("/api/wifi/scan",     HTTP_POST, handle_wifi_scan_start);
     server.on("/api/wifi/networks", HTTP_GET,  handle_wifi_networks);
     server.on("/api/restart",       HTTP_POST, handle_restart);
+    server.on("/api/navigate",      HTTP_POST, handle_navigate);
     server.on("/api/demo",          HTTP_POST, handle_demo_toggle);
     server.on("/api/realtime",      HTTP_GET,  handle_realtime);
     server.on("/api/mqtt",          HTTP_POST, handle_mqtt_post);
