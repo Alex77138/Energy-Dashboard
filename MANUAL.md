@@ -77,16 +77,25 @@ Il s'installe sur la carte **Guition JC8048W550** (ESP32-S3, 5 pouces) et se con
 
 ### Option B — Fichier .bin précompilé (bêta testeurs)
 
-1. Téléchargez le fichier `firmware_v1.0.bin` depuis la page [Releases](https://github.com/Alex77138/Energy-Dashboard/releases)
-2. Utilisez [ESP Web Flasher](https://espressif.github.io/esptool-js/) **ou** `esptool.py` :
-   ```
-   esptool.py --port /dev/ttyUSB0 --baud 460800 \
-     --before default_reset --after hard_reset \
-     write_flash 0x0 firmware_v1.0.bin
-   ```
-3. Au premier démarrage, configurez le Wi-Fi via le portail captif (voir section 4)
+1. Téléchargez le fichier `firmware_merged.bin` depuis la page [Releases](https://github.com/Alex77138/Energy-Dashboard/releases)
+2. Ouvrez [ESP Web Flasher](https://espressif.github.io/esptool-js/) dans **Chrome ou Edge** (pas Safari)
+3. Sélectionnez le baudrate **`921600`** (ou `460800` si des erreurs apparaissent)
+4. Cliquez **Connect** et choisissez le port USB de la carte
+5. Flash Address : **`0x0`** — sélectionnez `firmware_merged.bin`
+6. Cliquez **Program** et attendez la fin (environ 30 s)
+7. Au premier démarrage, configurez le Wi-Fi via le portail captif (voir section 4)
+
+Via `esptool.py` en ligne de commande :
+
+```bash
+esptool.py --port /dev/ttyUSB0 --baud 921600 \
+  --before default_reset --after hard_reset \
+  write_flash 0x0 firmware_merged.bin
+```
 
 > **Note :** Maintenez le bouton **BOOT** (GPIO 0) enfoncé pendant le branchement si l'ESP ne rentre pas en mode flash automatiquement.
+>
+> **Baudrate :** 921600 est la valeur optimale pour l'ESP32-S3. Si le flash échoue avec des erreurs de checksum, réessayez à 460800.
 
 ---
 
