@@ -25,6 +25,7 @@ Format: [Version] — Description — Date
 - `today_kwh` batteries absent en mode démo
 - Affichage `"Auj: -- kWh"` figé sur l'écran de détail batterie
 - Accumulation hebdomadaire/mensuelle batterie ne comptabilisait pas la journée en cours
+- **Mode démo persistant après sauvegarde** : `saveCfg()` inclut désormais `demo_mode` dans le payload ; `handle_config_post()` le lit → l'état du toggle est correctement sauvegardé en NVS à chaque clic sur « Sauvegarder »
 
 ### Sécurité
 - Credentials WiFi retirés de `config.h` (remplacés par placeholders)
