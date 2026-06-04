@@ -10,8 +10,10 @@ void sd_log(const AppData &d);
 bool sd_get_history(char *out, size_t out_sz, int count);
 
 // Données journalières (baselines multi-source)
-bool sd_save_daily(int yday, float grid_base, const float *solar_base, int n_solar);
-bool sd_load_daily(int *yday, float *grid_base, float *solar_base, int n_solar);
+bool sd_save_daily(int yday, float grid_base, const float *solar_base, int n_solar,
+                   const float *router_base, int n_router);
+bool sd_load_daily(int *yday, float *grid_base, float *solar_base, int n_solar,
+                   float *router_base, int n_router);
 
 // Données hebdo/mensuelles (bases cumulées)
 struct PeriodData {

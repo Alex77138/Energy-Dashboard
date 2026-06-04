@@ -61,30 +61,37 @@ void sd_log(const AppData &d) {
     f.close();
 }
 
-// Format daily2.bin: magic(1) + yday(4) + grid_base(4) + n_solar(1) + solar_base[n](4 each)
-bool sd_save_daily(int yday, float grid_base, const float *solar_base, int n_solar) {
+// Format daily2.bin v2 (0xDB): magic(1) + yday(4) + grid_base(4) + n_solar(1) + solar_base[n](4 each) + n_router(1) + router_base[n](4 each)
+// Format daily2.bin v1 (0xDA): magic(1) + yday(4) + grid_base(4) + n_solar(1) + solar_base[n](4 each)
+bool sd_save_daily(int yday, float grid_base, const float *solar_base, int n_solar,
+                   const float *router_base, int n_router) {
     if (!s_ready) return false;
     File f = SD.open(DAILY_FILE, FILE_WRITE);
     if (!f) return false;
-    uint8_t magic = 0xDA;
+    uint8_t magic = 0xDB;
     uint8_t ns = (uint8_t)n_solar;
+    uint8_t nr = (uint8_t)n_router;
     f.write(&magic, 1);
     f.write((uint8_t*)&yday,      sizeof(yday));
     f.write((uint8_t*)&grid_base, sizeof(grid_base));
     f.write(&ns, 1);
     for (int i = 0; i < n_solar; i++)
         f.write((uint8_t*)&solar_base[i], sizeof(float));
+    f.write(&nr, 1);
+    for (int i = 0; i < n_router; i++)
+        f.write((uint8_t*)&router_base[i], sizeof(float));
     f.close();
     return true;
 }
 
-bool sd_load_daily(int *yday, float *grid_base, float *solar_base, int n_solar) {
+bool sd_load_daily(int *yday, float *grid_base, float *solar_base, int n_solar,
+                   float *router_base, int n_router) {
     if (!s_ready || !SD.exists(DAILY_FILE)) return false;
     File f = SD.open(DAILY_FILE, FILE_READ);
     if (!f) return false;
     uint8_t magic = 0;
     f.read(&magic, 1);
-    if (magic != 0xDA) { f.close(); return false; }
+    if (magic != 0xDA && magic != 0xDB) { f.close(); return false; }
     bool ok = f.read((uint8_t*)yday,      sizeof(int))   == sizeof(int)   &&
               f.read((uint8_t*)grid_base, sizeof(float)) == sizeof(float);
     if (!ok) { f.close(); return false; }
@@ -93,6 +100,17 @@ bool sd_load_daily(int *yday, float *grid_base, float *solar_base, int n_solar) 
     int to_read = (ns < (uint8_t)n_solar) ? ns : n_solar;
     for (int i = 0; i < to_read; i++)
         f.read((uint8_t*)&solar_base[i], sizeof(float));
+    // Sauter les entrées solaires supplémentaires si le fichier en a plus
+    for (int i = to_read; i < (int)ns; i++) {
+        float dummy; f.read((uint8_t*)&dummy, sizeof(float));
+    }
+    if (magic == 0xDB && router_base && n_router > 0) {
+        uint8_t nr = 0;
+        f.read(&nr, 1);
+        int tr = (nr < (uint8_t)n_router) ? nr : n_router;
+        for (int i = 0; i < tr; i++)
+            f.read((uint8_t*)&router_base[i], sizeof(float));
+    }
     f.close();
     return true;
 }

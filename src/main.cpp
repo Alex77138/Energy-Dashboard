@@ -198,11 +198,15 @@ static void poll_task(void *) {
                 if (getLocalTime(&ti, 0)) {
                     int saved_yday; float saved_gb;
                     float saved_sb[MAX_SOLAR] = {};
-                    if (sd_load_daily(&saved_yday, &saved_gb, saved_sb, MAX_SOLAR) &&
+                    float saved_rb[MAX_ROUTERS] = {};
+                    if (sd_load_daily(&saved_yday, &saved_gb, saved_sb, MAX_SOLAR,
+                                      saved_rb, MAX_ROUTERS) &&
                         saved_yday == ti.tm_yday) {
                         last_yday = saved_yday;
                         grid_base = saved_gb;
-                        memcpy(solar_base, saved_sb, sizeof(solar_base));
+                        memcpy(solar_base,  saved_sb, sizeof(solar_base));
+                        memcpy(router_base, saved_rb, sizeof(router_base));
+                        router_base_set = true;
                         Serial.printf("[poll] Baselines J%d: reseau=%.3f\n", saved_yday, grid_base);
                     }
 
@@ -446,7 +450,8 @@ static void poll_task(void *) {
                         router_base_set = true;
                         if (last_week_num  == -1) last_week_num  = cur_week;
                         if (last_month_num == -1) last_month_num = cur_month;
-                        sd_save_daily(last_yday, grid_base, solar_base, MAX_SOLAR);
+                        sd_save_daily(last_yday, grid_base, solar_base, MAX_SOLAR,
+                                      router_base, MAX_ROUTERS);
                     }
                     if (!router_base_set) {
                         for (int i = 0; i < MAX_ROUTERS; i++)
