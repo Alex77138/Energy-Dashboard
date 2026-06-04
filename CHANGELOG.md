@@ -5,6 +5,32 @@ Format: [Version] — Description — Date
 
 ---
 
+## [V1.1] — Correctif : données routeur remises à zéro au redémarrage — 2026-06-04
+
+### Corrections
+
+- **Données routeur (`today_kwh`) remises à zéro à chaque redémarrage**
+  - Cause : la baseline quotidienne des routeurs (`router_base`) n'était jamais
+    sauvegardée sur la carte SD. Au boot, le premier poll la fixait à la valeur
+    courante, ce qui ramenait `today_kwh` à 0.
+  - Correction : extension du fichier `daily2.bin` (nouveau magic `0xDB`) pour
+    inclure `n_router + router_base[]` après les données solaires existantes.
+  - Au démarrage, `router_base` est restauré depuis la SD et `router_base_set`
+    est positionné à `true` immédiatement, ce qui empêche le bloc de
+    réinitialisation de l'écraser.
+  - Rétrocompatible avec l'ancien format `0xDA` (router_base = 0 à la
+    première lecture après mise à jour, puis correctement sauvegardé dès le
+    premier changement de jour).
+
+### Technique
+
+- `sd_logger.cpp / sd_logger.h` : nouvelles signatures `sd_save_daily` et
+  `sd_load_daily` avec paramètres `router_base[]` et `n_router`
+- `main.cpp` : `sd_load_daily` restaure `router_base` et arme `router_base_set`
+  dès la restauration des baselines journalières
+
+---
+
 ## [V1.0] — Tactile, navigation 5 écrans, multi-sources solaires, hebdo/mensuel — 2026-05-18
 
 ### Ajouts
