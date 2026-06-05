@@ -1,0 +1,85 @@
+name: Build & Release Firmware
+
+on:
+  push:
+    tags:
+      - 'V*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+          key: pio-${{ hashFiles('platformio.ini') }}
+          restore-keys: pio-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PlatformIO CLI
+        run: pip install platformio
+
+      - name: Create config.h from example
+        # config.h est ignoré par git (credentials WiFi).
+        # Le firmware compilé démarre avec des credentials vides →
+        # l'écran de configuration WiFi tactile s'affiche au premier boot.
+        run: cp src/config.h.example src/config.h
+
+      - name: Build firmware
+        run: pio run -e jc8048w550
+
+      - name: Rename firmware with version tag
+        run: |
+          cp .pio/build/jc8048w550/firmware.bin \
+             firmware-${{ github.ref_name }}.bin
+
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        run: |
+          TAG="${{ github.ref_name }}"
+          NOTES=$(python3 - <<'EOF'
+          import re, sys
+          tag = "$TAG"
+          content = open("CHANGELOG.md").read()
+          m = re.search(
+              r"(?<=\n)## \[" + re.escape(tag) + r"\].*?(?=\n## \[|\Z)",
+              "\n" + content,
+              re.DOTALL,
+          )
+          print(m.group(0).strip() if m else "Voir CHANGELOG.md pour le détail.")
+          EOF
+          )
+          {
+            echo "notes<<ENDOFNOTES"
+            echo "$NOTES"
+            echo ""
+            echo "---"
+            echo "### Flash OTA (sans câble)"
+            echo "Interface web → onglet **Mise à jour** → charger \`firmware-${TAG}.bin\`"
+            echo ""
+            echo "> **Premier boot** : si le NVS est vierge, l'écran de"
+            echo "> configuration WiFi tactile s'affiche automatiquement."
+            echo "ENDOFNOTES"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Dash Energy ${{ github.ref_name }}"
+          body: ${{ steps.notes.outputs.notes }}
+          files: firmware-${{ github.ref_name }}.bin
+          fail_on_unmatched_files: true
