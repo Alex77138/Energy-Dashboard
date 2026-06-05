@@ -5,6 +5,72 @@ Format: [Version] — Description — Date
 
 ---
 
+## [V1.2] — Persistance journalière + onglet Graphique + correctifs — 2026-06-05
+
+### Corrections
+
+- **Données journalières (`today_kwh`) remises à zéro au redémarrage**
+  - Cause : `sd_save_daily` n'était appelé qu'une fois par jour (au changement
+    de jour à minuit). Si l'ESP redémarrait avant minuit, le fichier conservait
+    l'ancien `yday` → la restauration échouait → `grid_base = 0`.
+  - Correction : sauvegarde périodique toutes les **5 minutes** (en plus de la
+    sauvegarde au changement de jour). Au prochain redémarrage, la baseline est
+    toujours fraîche (décalage max 5 min).
+
+- **Double écriture SD à minuit**
+  - Le bloc de changement de jour appelait `sd_save_daily`, puis la sauvegarde
+    périodique le rappelait immédiatement dans le même cycle de poll.
+  - Correction : `last_daily_save_ts` mis à jour dans le bloc de changement de
+    jour pour neutraliser la sauvegarde périodique dans la même passe.
+
+- **Double chargement de Chart.js sur clics rapides**
+  - Des clics rapides sur l'onglet Graphique ajoutaient plusieurs balises
+    `<script>` Chart.js simultanément.
+  - Correction : drapeau `chartJsLoading` + file d'attente `chartJsCbs[]` —
+    les callbacks s'accumulent et sont tous exécutés à la fin du chargement
+    unique.
+
+- **Protection NaN dans le calcul `today_kwh`**
+  - `fmaxf(0.0f, NaN)` est un comportement indéfini sur certaines
+    implémentations C.
+  - Correction : remplacement par `(!isnan(g_d) && g_d > 0.0f) ? g_d : 0.0f`
+    pour grille, solaire et routeur.
+
+- **Vérification des retours `write()` / `read()` dans `sd_logger`**
+  - `sd_save_daily` ignorait les valeurs de retour de `write()` et renvoyait
+    toujours `true`, même en cas d'écriture partielle.
+  - `sd_load_daily` ne vérifiait pas les lectures des tableaux solaire/routeur.
+  - Correction : chaque appel `write()` / `read()` est désormais vérifié ; la
+    fonction retourne `false` dès la première erreur.
+
+### Ajouts
+
+- **Onglet Graphique dans l'interface web**
+  - Deux courbes Chart.js 4.4 :
+    - **Courbe 2 h** : ring buffer haute fréquence (dernières 2 heures)
+    - **Courbe 24 h** : ring buffer journalier 288 pts (00:00 → maintenant)
+  - Chargement différé de Chart.js depuis CDN — ne charge la bibliothèque que
+    si l'onglet est ouvert.
+  - Rafraîchissement automatique toutes les 5 min tant que l'onglet est actif ;
+    arrêt automatique en quittant l'onglet.
+  - Les indicateurs « Aujourd'hui réseau » et « Aujourd'hui solaire » déplacés
+    dans cet onglet.
+
+### Nettoyage
+
+- Suppression des variables JS mortes `dayTid` et `chDay`.
+- `startRefresh()` ne tente plus d'appeler `fetchDaily()` (supprimée).
+
+### Technique
+
+- `main.cpp` : ajout de `last_daily_save_ts` + bloc de sauvegarde périodique
+  dans `poll_task`
+- `sd_logger.cpp` : vérification exhaustive des retours d'E/S SD
+- `webserver.cpp` : refonte onglet Graphique (`loadChartJs`, `fetchCharts`,
+  `renderChart`, `showTab`)
+
+---
+
 ## [V1.1] — Correctif : données routeur remises à zéro au redémarrage — 2026-06-04
 
 ### Corrections

@@ -5,7 +5,7 @@
 
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-ESP32--S3-orange)](https://platformio.org/)
 [![LVGL](https://img.shields.io/badge/LVGL-8.4-blue)](https://lvgl.io/)
-[![Version](https://img.shields.io/badge/firmware-V1.1-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/firmware-V1.2-green)](CHANGELOG.md)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
 ---
