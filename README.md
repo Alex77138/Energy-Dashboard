@@ -79,6 +79,11 @@
 > **⚠️ GPIO 0** est le bouton BOOT/reset — ne pas l'utiliser dans le firmware.  
 > **GPIO 2** (rétroéclairage) est safe — ne déclenche pas de redémarrage.
 
+### Support d'écran / Enclosure
+
+Le support de bureau pour le JC8048W550 peut être imprimé en 3D :  
+🖨️ **[XTouch Pro Base — Guition 5" LCD (MakerWorld)](https://makerworld.com/fr/models/1016156-xtouch-pro-official-base-for-guition-5inch-lcd#profileId-996406)**
+
 ---
 
 ## Getting Started / Démarrage rapide
