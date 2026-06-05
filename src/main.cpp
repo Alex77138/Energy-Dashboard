@@ -455,6 +455,7 @@ static void poll_task(void *) {
                         if (last_month_num == -1) last_month_num = cur_month;
                         sd_save_daily(last_yday, grid_base, solar_base, MAX_SOLAR,
                                       router_base, MAX_ROUTERS);
+                        last_daily_save_ts = (int32_t)time(nullptr);
                     }
                     if (!router_base_set) {
                         for (int i = 0; i < MAX_ROUTERS; i++)

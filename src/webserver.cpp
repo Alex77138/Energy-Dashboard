@@ -1127,13 +1127,20 @@ function fmtTs(ts){
   return pad(d.getHours())+':'+pad(d.getMinutes());
 }
 
-var chartJsLoaded=false;
+var chartJsLoaded=false, chartJsLoading=false, chartJsCbs=[];
 function loadChartJs(cb){
   if(chartJsLoaded&&typeof Chart!=='undefined'){cb();return;}
+  chartJsCbs.push(cb);
+  if(chartJsLoading)return;
+  chartJsLoading=true;
   var s=document.createElement('script');
   s.src='https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
-  s.onload=function(){chartJsLoaded=true;cb();};
+  s.onload=function(){
+    chartJsLoaded=true;chartJsLoading=false;
+    chartJsCbs.forEach(function(f){f();});chartJsCbs=[];
+  };
   s.onerror=function(){
+    chartJsLoading=false;chartJsCbs=[];
     ['st-2h','st-24h'].forEach(function(id){
       var el=document.getElementById(id);
       if(el)el.textContent='Chart.js non disponible (connexion internet requise)';
@@ -1153,12 +1160,14 @@ var chartOpts={
 
 function renderChart(canvasId,statusId,pts,chRef,setter){
   var st=document.getElementById(statusId);
+  var canvas=document.getElementById(canvasId);
+  if(!canvas)return chRef;
   if(!pts||!pts.length){if(st)st.textContent='Pas encore de donnees';return chRef;}
   var labels=pts.map(function(p){return fmtTs(p.ts);});
   var gp=pts.map(function(p){return p.gp;});
   var sp=pts.map(function(p){return p.sp;});
   if(chRef)chRef.destroy();
-  var c=new Chart(document.getElementById(canvasId),{type:'line',data:{labels:labels,datasets:[
+  var c=new Chart(canvas,{type:'line',data:{labels:labels,datasets:[
     {label:'Reseau (W)',data:gp,borderColor:'#58a6ff',backgroundColor:'rgba(88,166,255,.15)',fill:true,tension:.3,pointRadius:0,borderWidth:2},
     {label:'Solaire (W)',data:sp,borderColor:'#f4a429',backgroundColor:'rgba(244,164,41,.25)',fill:true,tension:.3,pointRadius:0,borderWidth:2.5}
   ]},options:chartOpts});
