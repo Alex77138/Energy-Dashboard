@@ -29,6 +29,29 @@
 
 ---
 
+## Screenshots / Captures d'écran
+
+### Interface Web — Statut
+
+![Tableau de bord Statut](docs/screenshots/web-status.png)
+*Statut temps réel : Réseau −15 W (export), Solaire 584 W, Batterie Zendure charge −5 W (SOC 48 %), Routeur 165 W*
+
+![Courbe de consommation journalière](docs/screenshots/web-status-chart.png)
+*Énergies du jour + courbe de puissance haute résolution*
+
+### Interface Web — Configuration et outils
+
+![Configuration](docs/screenshots/web-config.png)
+*Tous les paramètres : démo, Wi-Fi, réseau, solaire, batteries, routeurs, HA, MQTT*
+
+![Mise à jour OTA](docs/screenshots/web-ota.png)
+*Mise à jour du firmware sans câble*
+
+![Aide](docs/screenshots/web-help.png)
+*Guide de premier démarrage et navigation*
+
+---
+
 ## Supported Devices / Appareils supportés
 
 ### Grid / Réseau
