@@ -218,6 +218,7 @@ details[open]>summary{color:var(--text)}
 </div>
 <nav>
   <button class="tab active" onclick="showTab('status',this)">Statut</button>
+  <button class="tab" onclick="showTab('graph',this)">Graphique</button>
   <button class="tab" onclick="showTab('config',this)">Configuration</button>
   <button class="tab" onclick="showTab('ota',this)">Mise a jour</button>
   <button class="tab" onclick="showTab('aide',this)">Aide</button>
@@ -259,15 +260,25 @@ details[open]>summary{color:var(--text)}
   <div class="day-grid">
     <div class="si"><div class="si-lbl">Reseau aujourd'hui</div><div class="si-val" id="d-g-kwh">-- kWh</div></div>
     <div class="si"><div class="si-lbl">Solaire aujourd'hui</div><div class="si-val" id="d-s-kwh">-- kWh</div></div>
-    <div class="si"><div class="si-lbl">Autoconsommation</div><div class="si-val" id="d-ac">-- %</div></div>
-    <div class="si"><div class="si-lbl">Autosuffisance</div><div class="si-val" id="d-as">-- %</div></div>
   </div>
 
-  <!-- Graphique journalier -->
+</div>
+
+<!-- ══ Graphique ════════════════════════════════════════════════════════════ -->
+<div id="pane-graph" style="display:none">
+  <div class="day-grid">
+    <div class="si"><div class="si-lbl">Autoconsommation aujourd'hui</div><div class="si-val" id="d-ac">-- %</div></div>
+    <div class="si"><div class="si-lbl">Autosuffisance aujourd'hui</div><div class="si-val" id="d-as">-- %</div></div>
+  </div>
   <section>
-    <h3>PUISSANCES DU JOUR (W)</h3>
-    <div style="position:relative;height:320px"><canvas id="ch-day"></canvas></div>
-    <div id="day-status" style="font-size:12px;color:var(--muted);margin-top:6px;text-align:right"></div>
+    <h3>DERNIERES 2 HEURES</h3>
+    <div style="position:relative;height:260px"><canvas id="ch-2h"></canvas></div>
+    <div id="st-2h" style="font-size:12px;color:var(--muted);margin-top:4px;text-align:right"></div>
+  </section>
+  <section>
+    <h3>AUJOURD'HUI (00:00 &mdash; maintenant)</h3>
+    <div style="position:relative;height:260px"><canvas id="ch-24h"></canvas></div>
+    <div id="st-24h" style="font-size:12px;color:var(--muted);margin-top:4px;text-align:right"></div>
   </section>
 </div>
 
@@ -628,18 +639,27 @@ details[open]>summary{color:var(--text)}
 </main>
 <div class="toast" id="toast"></div>
 <script>
-var tid=null, dayTid=null, chDay=null;
+var tid=null, dayTid=null, chDay=null, ch2h=null, ch24h=null, graphTid=null;
 
 function showTab(name,btn){
   document.querySelectorAll('.tab').forEach(function(b){b.classList.remove('active');});
   btn.classList.add('active');
-  ['status','config','ota','aide'].forEach(function(p){
+  ['status','graph','config','ota','aide'].forEach(function(p){
     document.getElementById('pane-'+p).style.display=(p===name?'':'none');
   });
-  if(name==='status'){startRefresh();}
-  else{
+  if(name==='status'){
+    clearInterval(graphTid);graphTid=null;
+    startRefresh();
+  } else if(name==='graph'){
     clearInterval(tid);tid=null;
     clearInterval(dayTid);dayTid=null;
+    clearInterval(graphTid);graphTid=null;
+    fetchCharts();
+    graphTid=setInterval(fetchCharts,300000);
+  } else {
+    clearInterval(tid);tid=null;
+    clearInterval(dayTid);dayTid=null;
+    clearInterval(graphTid);graphTid=null;
     if(name==='config'){loadCfg();fetchStatus();if(!tid)tid=setInterval(fetchStatus,3000);}
   }
 }
@@ -1095,12 +1115,10 @@ function fetchStatus(){
 }
 function startRefresh(){
   fetchStatus();
-  fetchDaily();
   if(!tid) tid=setInterval(fetchStatus,3000);
-  if(!dayTid) dayTid=setInterval(fetchDaily,300000); // toutes les 5 min
 }
 
-/* ── Graphique journalier ── */
+/* ── Graphiques ── */
 function todayMidnight(){
   var d=new Date(); d.setHours(0,0,0,0); return d.getTime()/1000;
 }
@@ -1109,44 +1127,62 @@ function fmtTs(ts){
   return pad(d.getHours())+':'+pad(d.getMinutes());
 }
 
-function fetchDaily(){
-  if(typeof Chart==='undefined'){
-    var s=document.createElement('script');
-    s.src='https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
-    s.onload=function(){fetchDaily();};
-    s.onerror=function(){document.getElementById('day-status').textContent='Chart.js non disponible (connexion requise)';};
-    document.head.appendChild(s);
-    return;
+var chartJsLoaded=false;
+function loadChartJs(cb){
+  if(chartJsLoaded&&typeof Chart!=='undefined'){cb();return;}
+  var s=document.createElement('script');
+  s.src='https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+  s.onload=function(){chartJsLoaded=true;cb();};
+  s.onerror=function(){
+    ['st-2h','st-24h'].forEach(function(id){
+      var el=document.getElementById(id);
+      if(el)el.textContent='Chart.js non disponible (connexion internet requise)';
+    });
+  };
+  document.head.appendChild(s);
+}
+
+var chartOpts={
+  animation:false,
+  plugins:{legend:{labels:{color:'#e6edf3'}}},
+  scales:{
+    x:{ticks:{color:'#8b949e',maxTicksLimit:10},grid:{color:'#30363d'}},
+    y:{ticks:{color:'#8b949e'},grid:{color:'#30363d'}}
   }
-  fetch('/api/daily').then(function(r){return r.json();}).then(function(data){
-    var midnight=todayMidnight();
-    var pts=(data.pts||[]).filter(function(p){return p.ts>=midnight;});
+};
 
-    // Autoconsommation et autosuffisance journalieres
-    document.getElementById('d-ac').textContent=data.ac!==undefined?(data.ac+'%'):'-- %';
-    document.getElementById('d-as').textContent=data.as_!==undefined?(data.as_+'%'):'-- %';
+function renderChart(canvasId,statusId,pts,chRef,setter){
+  var st=document.getElementById(statusId);
+  if(!pts||!pts.length){if(st)st.textContent='Pas encore de donnees';return chRef;}
+  var labels=pts.map(function(p){return fmtTs(p.ts);});
+  var gp=pts.map(function(p){return p.gp;});
+  var sp=pts.map(function(p){return p.sp;});
+  if(chRef)chRef.destroy();
+  var c=new Chart(document.getElementById(canvasId),{type:'line',data:{labels:labels,datasets:[
+    {label:'Reseau (W)',data:gp,borderColor:'#58a6ff',backgroundColor:'rgba(88,166,255,.15)',fill:true,tension:.3,pointRadius:0,borderWidth:2},
+    {label:'Solaire (W)',data:sp,borderColor:'#f4a429',backgroundColor:'rgba(244,164,41,.25)',fill:true,tension:.3,pointRadius:0,borderWidth:2.5}
+  ]},options:chartOpts});
+  if(st)st.textContent=pts.length+' pts — '+fmtTs(pts[0].ts)+' → '+fmtTs(pts[pts.length-1].ts);
+  setter(c);
+}
 
-    var st=document.getElementById('day-status');
-    if(!pts.length){st.textContent='Pas encore de donnees (debut de journee)';return;}
+function fetchCharts(){
+  loadChartJs(function(){
+    fetch('/api/daily').then(function(r){return r.json();}).then(function(data){
+      var now=Math.floor(Date.now()/1000);
+      var midnight=Math.floor(todayMidnight());
+      var all=data.pts||[];
 
-    var labels=pts.map(function(p){return fmtTs(p.ts);});
-    var gp=pts.map(function(p){return p.gp;});
-    var sp=pts.map(function(p){return p.sp;});
-    var opts={
-      animation:false,
-      plugins:{legend:{labels:{color:'#e6edf3'}}},
-      scales:{
-        x:{ticks:{color:'#8b949e',maxTicksLimit:12},grid:{color:'#30363d'}},
-        y:{ticks:{color:'#8b949e'},grid:{color:'#30363d'}}
-      }
-    };
-    if(chDay) chDay.destroy();
-    chDay=new Chart(document.getElementById('ch-day'),{type:'line',data:{labels:labels,datasets:[
-      {label:'Consommation reseau (W)',data:gp,borderColor:'#58a6ff',backgroundColor:'rgba(88,166,255,.15)',fill:true,tension:.3,pointRadius:0,borderWidth:2},
-      {label:'Production solaire (W)',data:sp,borderColor:'#f4a429',backgroundColor:'rgba(244,164,41,.25)',fill:true,tension:.3,pointRadius:0,borderWidth:2.5}
-    ]},options:opts});
-    st.textContent=pts.length+' points — '+fmtTs(pts[0].ts)+' → '+fmtTs(pts[pts.length-1].ts);
-  }).catch(function(){});
+      var el=document.getElementById('d-ac');if(el)el.textContent=data.ac!==undefined?(data.ac+'%'):'-- %';
+      el=document.getElementById('d-as');if(el)el.textContent=data.as_!==undefined?(data.as_+'%'):'-- %';
+
+      var pts2h=all.filter(function(p){return p.ts>=now-7200;});
+      renderChart('ch-2h','st-2h',pts2h,ch2h,function(c){ch2h=c;});
+
+      var pts24h=all.filter(function(p){return p.ts>=midnight;});
+      renderChart('ch-24h','st-24h',pts24h,ch24h,function(c){ch24h=c;});
+    }).catch(function(){});
+  });
 }
 
 /* ── Config ── */

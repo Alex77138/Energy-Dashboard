@@ -182,6 +182,7 @@ static void poll_task(void *) {
     static float solar_base[MAX_SOLAR] = {};
     static float router_base[MAX_ROUTERS] = {};
     static bool  router_base_set = false;
+    static int32_t last_daily_save_ts = 0;
 
     // Bases hebdo/mensuelles
     static float grid_week_base  = 0.0f, grid_month_base  = 0.0f;
@@ -459,6 +460,14 @@ static void poll_task(void *) {
                         for (int i = 0; i < MAX_ROUTERS; i++)
                             router_base[i] = tmp.routers[i].today_kwh;
                         router_base_set = true;
+                    }
+
+                    // Sauvegarde périodique des baselines (toutes les 5 min)
+                    int32_t now_ts = (int32_t)time(nullptr);
+                    if (now_ts > 0 && last_yday != -1 && now_ts - last_daily_save_ts >= 300) {
+                        sd_save_daily(last_yday, grid_base, solar_base, MAX_SOLAR,
+                                      router_base, MAX_ROUTERS);
+                        last_daily_save_ts = now_ts;
                     }
                 }
 
