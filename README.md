@@ -169,7 +169,8 @@ Accessible depuis n'importe quel navigateur sur le réseau local.
 
 | Onglet | Contenu |
 |---|---|
-| **Statut** | Puissances temps réel, énergie Auj/Sem/Mois, graphiques, navigation écran |
+| **Statut** | Puissances temps réel, énergie Auj/Sem/Mois, navigation écran |
+| **Graphique** | Courbe 2 h (haute fréquence) + courbe 24 h (00:00 → maintenant) |
 | **Configuration** | Réseau, solaire (multi-sources), batteries, routeurs, MQTT, Wi-Fi, OTA |
 | **Mise à jour** | Flash OTA d'un fichier `.bin` |
 | **Aide** | Mode d'emploi complet intégré |
@@ -200,10 +201,10 @@ Fichiers créés automatiquement :
 
 | Fichier | Contenu |
 |---|---|
-| `/daily.bin` | Baseline journalière réseau + solaire |
+| `/daily2.bin` | Baselines journalières réseau + solaires + routeurs |
 | `/period.bin` | Bases hebdomadaires et mensuelles |
-| `/day_ring.bin` | Courbe journalière (ring 288 pts × 5 min) |
-| `/log.csv` | Historique CSV horodaté (si SD présente) |
+| `/dayring.bin` | Courbe journalière (ring 288 pts × 5 min) |
+| `/energy_log.csv` | Historique CSV horodaté (si SD présente) |
 
 ---
 
@@ -251,16 +252,13 @@ pio run --target upload
 pio device monitor --baud 115200
 ```
 
-**Mémoire utilisée (V1.0) :**
-- Flash : ~25 % (1.68 MB / 6.55 MB)
-- RAM : ~38 % (125 KB / 328 KB)
-- PSRAM : utilisée pour les framebuffers LVGL et les ring buffers web
+**Mémoire :** Flash ~25–30 % sur 6.55 MB partition OTA · RAM ~40 % sur 328 KB · PSRAM utilisée pour les framebuffers LVGL et ring buffers web.
 
 ---
 
 ## Architecture
 
-```
+```text
 main.cpp          — Setup, tâches FreeRTOS (display/poll/web/loop)
 display.cpp       — Arduino_GFX, LVGL init, driver tactile GT911
 ui.cpp            — 5 écrans LVGL, navigation, mise à jour

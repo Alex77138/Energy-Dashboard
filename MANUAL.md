@@ -1,6 +1,6 @@
 # Dash Energy — Mode d'emploi
 
-**Version firmware : V1.0**
+**Version firmware : V1.2**
 
 ---
 
@@ -11,23 +11,24 @@
 3. [Installation du firmware](#3-installation-du-firmware)
 4. [Premier démarrage](#4-premier-démarrage)
 5. [Interface web — Statut](#5-interface-web--statut)
-6. [Interface web — Configuration](#6-interface-web--configuration)
-   - 6.1 [Mode démo](#61-mode-démo)
-   - 6.2 [Général](#62-général)
-   - 6.3 [Réseau](#63-réseau)
-   - 6.4 [Solaire](#64-solaire-multi-sources)
-   - 6.5 [Batteries](#65-batteries)
-   - 6.6 [Routeurs solaires](#66-routeurs-solaires)
-   - 6.7 [MQTT](#67-mqtt)
-   - 6.8 [Wi-Fi](#68-wi-fi)
-   - 6.9 [Home Assistant — Token](#69-home-assistant--token)
-7. [Interface web — Mise à jour OTA](#7-interface-web--mise-à-jour-ota)
-8. [Écran principal](#8-écran-principal)
-9. [Pages de détail](#9-pages-de-détail)
-10. [Navigation entre écrans](#10-navigation-entre-écrans)
-11. [Carte SD](#11-carte-sd)
-12. [MQTT & Home Assistant](#12-mqtt--home-assistant)
-13. [Dépannage](#13-dépannage)
+6. [Interface web — Graphique](#6-interface-web--graphique)
+7. [Interface web — Configuration](#7-interface-web--configuration)
+   - 7.1 [Mode démo](#71-mode-démo)
+   - 7.2 [Général](#72-général)
+   - 7.3 [Réseau](#73-réseau)
+   - 7.4 [Solaire](#74-solaire-multi-sources)
+   - 7.5 [Batteries](#75-batteries)
+   - 7.6 [Routeurs solaires](#76-routeurs-solaires)
+   - 7.7 [MQTT](#77-mqtt)
+   - 7.8 [Wi-Fi](#78-wi-fi)
+   - 7.9 [Home Assistant — Token](#79-home-assistant--token)
+8. [Interface web — Mise à jour OTA](#8-interface-web--mise-à-jour-ota)
+9. [Écran principal](#9-écran-principal)
+10. [Pages de détail](#10-pages-de-détail)
+11. [Navigation entre écrans](#11-navigation-entre-écrans)
+12. [Carte SD](#12-carte-sd)
+13. [MQTT & Home Assistant](#13-mqtt--home-assistant)
+14. [Dépannage](#14-dépannage)
 
 ---
 
@@ -35,7 +36,7 @@
 
 **Dash Energy** est un tableau de bord énergie en temps réel conçu pour surveiller votre installation solaire, votre consommation réseau, vos batteries et vos routeurs solaires sur un écran tactile 800×480.
 
-Il s'installe sur la carte **Guition JC8048W550** (ESP32-S3, 5 pouces) et se configure entièrement depuis un navigateur web, sans outil supplémentaire.
+Il s'installe sur la carte **Guition JC8048W550** (ESP32-S3, 5 pouces) et se configure entièrement depuis un navigateur web, sans outil supplémentaire après le premier flash.
 
 **Ce que vous pouvez surveiller :**
 - Production solaire (jusqu'à 4 sources indépendantes)
@@ -51,16 +52,18 @@ Il s'installe sur la carte **Guition JC8048W550** (ESP32-S3, 5 pouces) et se con
 | Élément | Requis | Notes |
 |---|---|---|
 | Guition JC8048W550 | ✅ Obligatoire | Disponible sur AliExpress |
-| Câble USB-C | ✅ | Pour le flash initial |
+| Câble USB-C | ✅ | Pour le flash initial uniquement |
 | Alimentation 5 V / 2 A | ✅ | Via USB-C |
-| Carte microSD FAT32 | ⚡ Recommandée | Persistance hebdo/mensuel |
+| Carte microSD FAT32 | ⚡ Recommandée | Persistance hebdo/mensuel + courbes journalières |
 | Réseau Wi-Fi 2.4 GHz | ✅ | L'ESP32-S3 ne supporte pas le 5 GHz |
 
 ---
 
 ## 3. Installation du firmware
 
-### Option A — PlatformIO (depuis les sources)
+> Le câble USB-C est nécessaire **uniquement pour le premier flash**. Les mises à jour suivantes se font sans câble via l'onglet **Mise à jour (OTA)** de l'interface web.
+
+### Option A — PlatformIO / VS Code (depuis les sources)
 
 1. Installez [VS Code](https://code.visualstudio.com/) + l'extension PlatformIO
 2. Clonez le dépôt :
@@ -71,37 +74,25 @@ Il s'installe sur la carte **Guition JC8048W550** (ESP32-S3, 5 pouces) et se con
    ```
    cp src/config.h.example src/config.h
    ```
-4. Éditez `src/config.h` et renseignez votre SSID/mot de passe Wi-Fi
-5. Branchez la carte en USB et cliquez sur **Upload** dans PlatformIO
-6. Ouvrez le moniteur série à **115200 baud** pour suivre le démarrage
+4. Branchez la carte en USB et cliquez sur **Upload** dans PlatformIO
+5. Ouvrez le moniteur série à **115200 baud** pour suivre le démarrage
 
-### Option B — Fichier .bin précompilé (bêta testeurs)
+> **`src/config.h`** peut rester avec les valeurs par défaut : au premier démarrage,
+> l'écran tactile affiche une interface de configuration Wi-Fi pour saisir vos identifiants
+> sans toucher au code.
 
-> ⚠️ **Le web flasher (esptool-js) n'est pas compatible avec la JC8048W550.** Cette carte embarque une PSRAM OPI qui nécessite le flag `--no-stub` lors du flash — non supporté par les outils en ligne. Utilisez `esptool.py` en ligne de commande ou PlatformIO.
+### Option B — Fichier `.bin` précompilé (page Releases GitHub)
 
-**Via `esptool.py`** (Python requis — `pip install esptool`) :
+Le fichier `firmware-V1.x.bin` disponible sur la page
+[Releases](https://github.com/Alex77138/Energy-Dashboard/releases)
+est le binaire de l'application. Il est destiné aux **mises à jour OTA** via
+l'interface web (onglet **Mise à jour**).
 
-1. Téléchargez `firmware_merged.bin` depuis la page [Releases](https://github.com/Alex77138/Energy-Dashboard/releases)
-2. Flashez avec la commande suivante (remplacez le port) :
+Pour un **premier flash** (ESP vierge), utilisez l'option A (PlatformIO) qui
+gère automatiquement le bootloader, la table de partitions et l'application.
 
-```bash
-esptool.py --chip esp32s3 --port /dev/ttyUSB0 --baud 460800 \
-  --no-stub --before default_reset --after hard_reset \
-  write_flash 0x0 firmware_merged.bin
-```
-
-Sur Windows, remplacez `/dev/ttyUSB0` par `COM3` (ou le port détecté dans le Gestionnaire de périphériques).
-
-**Via PlatformIO** (méthode recommandée) :
-
-```bash
-git clone https://github.com/Alex77138/Energy-Dashboard.git
-cd Energy-Dashboard
-cp src/config.h.example src/config.h
-pio run --target upload
-```
-
-> **Note :** Maintenez le bouton **BOOT** (GPIO 0) enfoncé pendant le branchement si l'ESP ne rentre pas en mode flash automatiquement.
+> **Note :** Maintenez le bouton **BOOT** (GPIO 0) enfoncé pendant le branchement
+> si l'ESP ne rentre pas en mode flash automatiquement.
 
 ---
 
@@ -110,10 +101,23 @@ pio run --target upload
 À la mise sous tension :
 
 1. L'écran s'allume — le logo et la version s'affichent brièvement dans le moniteur série
-2. L'écran principal apparaît (vide ou en mode démo si aucun appareil n'est configuré)
-3. Un point d'accès Wi-Fi **DashEnergy-Config** est créé (sans mot de passe)
+2. Un point d'accès Wi-Fi **DashEnergy-Config** est créé (sans mot de passe)
 
-**Configuration Wi-Fi initiale :**
+### Configuration Wi-Fi — option 1 : écran tactile (recommandée)
+
+Si aucun identifiant Wi-Fi n'est enregistré, **l'écran affiche automatiquement
+l'interface de configuration Wi-Fi** :
+
+1. Un scan des réseaux disponibles se lance automatiquement
+2. Touchez votre réseau dans la liste
+3. Le clavier tactile apparaît — saisissez votre mot de passe
+4. Appuyez sur **Connecter**
+5. Après connexion, l'interface principale s'affiche
+
+Les identifiants sont sauvegardés en mémoire interne (NVS). Les démarrages
+suivants se reconnectent automatiquement sans repasser par cet écran.
+
+### Configuration Wi-Fi — option 2 : interface web
 
 1. Connectez votre téléphone ou ordinateur au réseau **DashEnergy-Config**
 2. Ouvrez un navigateur et allez sur `http://192.168.4.1/`
@@ -126,7 +130,8 @@ pio run --target upload
 - Accédez à l'interface via `http://192.168.x.x/` ou `http://dashenergy.local/`
 - Le point d'accès se désactive automatiquement après connexion
 
-> Si le Wi-Fi est perdu, le point d'accès se réactive automatiquement et l'ESP retente la connexion toutes les 30 secondes.
+> Si le Wi-Fi est perdu, le point d'accès se réactive automatiquement et l'ESP
+> retente la connexion toutes les 30 secondes.
 
 ---
 
@@ -146,32 +151,49 @@ L'onglet **Statut** affiche en temps réel :
 
 - **Routeurs solaires** : puissance déviée (W), durée aujourd'hui/semaine/mois, énergie déviée
 
-- **Graphiques** :
-  - Courbe temps réel (6 dernières minutes, mise à jour en continu)
-  - Courbe journalière (aujourd'hui, point toutes les 5 minutes)
+- **Courbe temps réel** : ring buffer haute fréquence (6 dernières minutes, mise à jour en continu)
 
 - **Boutons de navigation** : changer l'écran actif de la tablette depuis le navigateur
 
 ---
 
-## 6. Interface web — Configuration
+## 6. Interface web — Graphique
 
-### 6.1 Mode démo
+L'onglet **Graphique** affiche deux courbes Chart.js pour analyser la journée :
 
-Active des données simulées et animées — aucun appareil réel n'est interrogé.  
+| Courbe | Données | Période |
+|---|---|---|
+| **2 h** | Ring buffer haute fréquence | Dernières 2 heures glissantes |
+| **24 h** | Ring buffer journalier (288 pts × 5 min) | Aujourd'hui de 00:00 à maintenant |
+
+Les deux courbes superposent la **puissance réseau** (bleu) et la **puissance solaire** (orange).
+
+L'onglet affiche également les totaux **Aujourd'hui réseau** et **Aujourd'hui solaire** (kWh).
+
+> **Chargement Chart.js :** la bibliothèque de graphiques est chargée depuis le CDN
+> jsDelivr uniquement à la première ouverture de l'onglet Graphique — elle n'est pas
+> embarquée dans le firmware.
+
+---
+
+## 7. Interface web — Configuration
+
+### 7.1 Mode démo
+
+Active des données simulées et animées — aucun appareil réel n'est interrogé.
 Utile pour présenter le tableau de bord ou vérifier l'affichage sans installation.
 
-### 6.2 Général
+### 7.2 Général
 
 | Champ | Description |
 |---|---|
 | Nom du tableau de bord | Affiché dans le titre de la page web |
 | Nom du réseau | Libellé affiché sur l'écran (ex : « Réseau EDF ») |
 | Nom solaire | Libellé affiché sur l'écran (ex : « Panneaux ») |
-| Orientation écran | `0` = USB en bas · `2` = USB en haut (180°) |
+| Orientation écran | `0` = USB à gauche · `2` = USB à droite (rotation 180°) |
 | Fuseau horaire | Syntaxe POSIX — ex : `CET-1CEST,M3.5.0,M10.5.0/3` pour la France |
 
-### 6.3 Réseau
+### 7.3 Réseau
 
 Sélectionnez le type d'appareil mesurant votre consommation/production réseau :
 
@@ -185,13 +207,13 @@ Sélectionnez le type d'appareil mesurant votre consommation/production réseau 
 
 Pour Home Assistant, les champs optionnels **Entité énergie**, **Entité tension** et **Entité intensité** permettent d'afficher ces valeurs sur la page de détail réseau.
 
-> **Signe de la puissance réseau :**  
-> - Valeur **positive** = import (vous achetez)  
-> - Valeur **négative** = export (vous revendez)  
+> **Signe de la puissance réseau :**
+> - Valeur **positive** = import (vous achetez)
+> - Valeur **négative** = export (vous revendez)
 >
 > Configurez votre entité HA en conséquence (ou utilisez une entité signée).
 
-### 6.4 Solaire (multi-sources)
+### 7.4 Solaire (multi-sources)
 
 Jusqu'à **4 sources solaires** indépendantes. Cliquez **« + Ajouter une source »** pour en ajouter.
 
@@ -210,7 +232,7 @@ Pour chaque source :
 
 **L'écran principal affiche le total de toutes les sources.** La page de détail solaire affiche chaque source séparément.
 
-### 6.5 Batteries
+### 7.5 Batteries
 
 Jusqu'à **4 batteries** indépendantes. Pour chaque batterie :
 
@@ -226,7 +248,7 @@ Jusqu'à **4 batteries** indépendantes. Pour chaque batterie :
 
 **Pour JK-BMS via ESPHome :** installez le composant [syssi/esphome-jk-bms](https://github.com/syssi/esphome-jk-bms) sur un ESP dédié et activez `web_server`. Renseignez l'IP de cet ESP.
 
-### 6.6 Routeurs solaires
+### 7.6 Routeurs solaires
 
 Jusqu'à **4 routeurs** (chauffe-eau, résistances, etc.). Pour chaque routeur :
 
@@ -242,7 +264,7 @@ Jusqu'à **4 routeurs** (chauffe-eau, résistances, etc.). Pour chaque routeur :
 | Entité tension | Optionnel |
 | Entité intensité | Optionnel |
 
-### 6.7 MQTT
+### 7.7 MQTT
 
 | Champ | Description |
 |---|---|
@@ -260,35 +282,35 @@ Jusqu'à **4 routeurs** (chauffe-eau, résistances, etc.). Pour chaque routeur :
 - `dashenergy/router/0/power_w`
 - … (un topic par mesure et par appareil)
 
-### 6.8 Wi-Fi
+### 7.8 Wi-Fi
 
-- **SSID / Mot de passe** : réseau 2.4 GHz  
-- **IP fixe** : décochez DHCP et renseignez IP, passerelle, masque, DNS  
+- **SSID / Mot de passe** : réseau 2.4 GHz
+- **IP fixe** : décochez DHCP et renseignez IP, passerelle, masque, DNS
 
-> Après sauvegarde du Wi-Fi, l'ESP redémarre. Vous devrez vous reconnecter à la nouvelle adresse IP si elle a changé.
+> Après sauvegarde du Wi-Fi, l'ESP redémarre. Vous devrez vous reconnecter à la
+> nouvelle adresse IP si elle a changé.
 
-### 6.9 Home Assistant — Token
+### 7.9 Home Assistant — Token
 
-Créez un jeton d'accès longue durée dans HA :  
+Créez un jeton d'accès longue durée dans HA :
 *Profil* → *Sécurité* → *Jetons d'accès longue durée* → **Créer un jeton**
 
 Collez ce jeton dans le champ **Token HA** de la configuration. Il est utilisé pour tous les appareils de type « Home Assistant ».
 
 ---
 
-## 7. Interface web — Mise à jour OTA
+## 8. Interface web — Mise à jour OTA
 
-1. Compilez ou téléchargez la nouvelle version du firmware (fichier `.bin`)
+1. Téléchargez `firmware-V1.x.bin` depuis la page [Releases GitHub](https://github.com/Alex77138/Energy-Dashboard/releases),
+   ou compilez-le avec `pio run` (fichier dans `.pio/build/jc8048w550/firmware.bin`)
 2. Allez dans l'onglet **Mise à jour**
 3. Sélectionnez le fichier `.bin` et cliquez **Mettre à jour**
 4. Une barre de progression apparaît — ne coupez pas l'alimentation
 5. L'ESP redémarre automatiquement sur le nouveau firmware
 
-> Le fichier `.bin` se trouve dans `.pio/build/jc8048w550/firmware.bin` après compilation.
-
 ---
 
-## 8. Écran principal
+## 9. Écran principal
 
 L'écran principal affiche en un coup d'œil l'état de toute l'installation.
 
@@ -311,7 +333,7 @@ L'écran principal affiche en un coup d'œil l'état de toute l'installation.
 
 ---
 
-## 9. Pages de détail
+## 10. Pages de détail
 
 Chaque page de détail est accessible en touchant la carte correspondante sur l'écran principal ou via les boutons de navigation de l'interface web.
 
@@ -340,7 +362,7 @@ Un bouton **← Retour** en haut à gauche de chaque page de détail permet de r
 
 ---
 
-## 10. Navigation entre écrans
+## 11. Navigation entre écrans
 
 | Méthode | Comment faire |
 |---|---|
@@ -353,7 +375,7 @@ Un bouton **← Retour** en haut à gauche de chaque page de détail permet de r
 
 ---
 
-## 11. Carte SD
+## 12. Carte SD
 
 La carte SD conserve les données entre les redémarrages. Sans carte SD, l'énergie hebdomadaire et mensuelle est perdue à chaque redémarrage.
 
@@ -363,16 +385,16 @@ La carte SD conserve les données entre les redémarrages. Sans carte SD, l'éne
 
 | Fichier | Contenu | Taille |
 |---|---|---|
-| `daily.bin` | Baselines journalières (réseau + solaires) | < 1 KB |
+| `daily2.bin` | Baselines journalières (réseau + solaires + routeurs) | < 1 KB |
 | `period.bin` | Bases hebdo/mensuelles (tous appareils) | < 2 KB |
-| `day_ring.bin` | Courbe journalière (288 pts × 5 min) | ~7 KB |
-| `log.csv` | Historique CSV horodaté | Croît avec le temps |
+| `dayring.bin` | Courbe journalière (288 pts × 5 min) | ~7 KB |
+| `energy_log.csv` | Historique CSV horodaté | Croît avec le temps |
 
 > L'utilisation de la SD est affichée dans la barre d'état de l'interface web.
 
 ---
 
-## 12. MQTT & Home Assistant
+## 13. MQTT & Home Assistant
 
 Quand MQTT est activé, le tableau de bord publie toutes ses mesures sur votre broker.
 
@@ -395,12 +417,12 @@ Quand MQTT est activé, le tableau de bord publie toutes ses mesures sur votre b
 
 ### Intégration Home Assistant
 
-Activez **Discovery HA** dans la configuration MQTT.  
+Activez **Discovery HA** dans la configuration MQTT.
 Les entités apparaîtront automatiquement dans HA sous le nom de votre tableau de bord.
 
 ---
 
-## 13. Dépannage
+## 14. Dépannage
 
 ### L'écran reste blanc au démarrage
 - Vérifiez que le firmware correct pour la carte JC8048W550 est flashé
@@ -412,6 +434,10 @@ Les entités apparaîtront automatiquement dans HA sous le nom de votre tableau 
 - Si les touches ne correspondent pas aux bonnes zones, changez l'orientation (0 ↔ 2) dans la configuration
 - La détection GT911 est confirmée dans la console : `[touch] GT911 OK`
 
+### L'écran de configuration Wi-Fi tactile ne s'affiche pas
+- Il s'affiche uniquement si aucun identifiant Wi-Fi n'est enregistré en NVS
+- Pour le forcer : effacez le NVS via `esptool.py --chip esp32s3 erase_flash`, puis reflashez
+
 ### Aucune donnée réseau / solaire
 1. Vérifiez que la carte est connectée au Wi-Fi (LED ou console série)
 2. Vérifiez l'adresse IP de votre appareil dans la configuration
@@ -420,14 +446,15 @@ Les entités apparaîtront automatiquement dans HA sous le nom de votre tableau 
 5. Activez le mode démo pour vérifier que l'affichage fonctionne correctement
 
 ### L'énergie journalière repart de zéro après un redémarrage
-- Normal sans carte SD
-- Avec carte SD : vérifiez que la carte est bien détectée (`sd_ready: true` dans `/api/status`)
+- Sans carte SD : comportement normal, l'énergie journalière n'est pas persistée
+- Avec carte SD (depuis V1.2) : la baseline est sauvegardée toutes les 5 minutes — le décalage maximum après un redémarrage est de 5 minutes
+- Vérifiez que la carte SD est bien détectée (`sd_ready: true` dans `/api/status`)
 - Formatez la carte en FAT32 si elle n'est pas reconnue
 
 ### Le Wi-Fi ne se connecte pas
 - Vérifiez que c'est un réseau 2.4 GHz (le 5 GHz n'est pas supporté)
 - Le point d'accès **DashEnergy-Config** se réactive si le Wi-Fi est perdu
-- Vérifiez le mot de passe dans Configuration → Wi-Fi
+- Vérifiez le mot de passe dans Configuration → Wi-Fi ou via l'écran tactile
 
 ### L'interface web ne répond plus
 - L'ESP peut être surchargé si trop d'appareils répondent lentement
