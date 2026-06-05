@@ -45,6 +45,17 @@ Format: [Version] — Description — Date
 
 ### Ajouts
 
+- **Configuration WiFi depuis l'écran tactile**
+  - Au premier démarrage (aucun identifiant Wi-Fi enregistré en NVS), l'écran
+    affiche automatiquement une interface de sélection réseau avec scan Wi-Fi
+    et clavier tactile intégré.
+  - Sélection du réseau par pression, saisie du mot de passe, connexion —
+    tout depuis l'écran, sans ordinateur.
+  - Les identifiants sont sauvegardés en NVS ; les démarrages suivants se
+    reconnectent automatiquement sans repasser par cet écran.
+  - L'AP captif (`DashEnergy-Config`) reste actif pendant la configuration
+    pour permettre une connexion simultanée via navigateur si besoin.
+
 - **Onglet Graphique dans l'interface web**
   - Deux courbes Chart.js 4.4 :
     - **Courbe 2 h** : ring buffer haute fréquence (dernières 2 heures)

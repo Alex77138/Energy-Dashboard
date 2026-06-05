@@ -29,6 +29,7 @@ bool                    ap_active          = false;
 static uint32_t         last_wifi_retry    = 0;
 static DNSServer        dns_server;
 static SemaphoreHandle_t s_display_ready   = nullptr;
+static volatile bool     s_run_wifi_config = false;
 
 static void ap_start() {
     WiFi.mode(WIFI_AP_STA);
@@ -152,6 +153,10 @@ static void display_task(void *) {
         xSemaphoreGive(s_display_ready);
         vTaskDelete(nullptr);
         return;
+    }
+    if (s_run_wifi_config) {
+        s_run_wifi_config = false;
+        wifi_config_run(); // bloque jusqu'à connexion, piloté depuis core 0 (même que LVGL)
     }
     ui_create();
     lv_refr_now(NULL);
@@ -583,17 +588,26 @@ void setup() {
     g_data.mutex     = xSemaphoreCreateMutex();
     s_display_ready  = xSemaphoreCreateBinary();
 
+    wifi_apply_static_config();
+    ap_start();
+
+    // Décider avant de lancer display_task : si aucun identifiant en NVS,
+    // display_task affichera l'écran de configuration WiFi tactile.
+    {
+        String ssid, pass;
+        s_run_wifi_config = !wifi_config_load(ssid, pass);
+    }
+
     xTaskCreatePinnedToCore(display_task, "display", 16384, nullptr, 2, nullptr, 0);
 
-    if (xSemaphoreTake(s_display_ready, pdMS_TO_TICKS(5000)) != pdTRUE) {
+    // Timeout long : laisse l'utilisateur configurer le WiFi via l'écran tactile
+    if (xSemaphoreTake(s_display_ready, pdMS_TO_TICKS(120000)) != pdTRUE) {
         Serial.println("[boot] Timeout ecran");
     }
     Serial.println("[boot] Ecran OK");
 
-    wifi_apply_static_config();
-    ap_start();
-
-    {
+    // Si wifi_config_run() a déjà établi la connexion, ne pas relancer WiFi.begin()
+    if (WiFi.status() != WL_CONNECTED) {
         String ssid, pass;
         if (wifi_config_load(ssid, pass)) {
             Serial.printf("[wifi] NVS: %s\n", ssid.c_str());
@@ -602,21 +616,24 @@ void setup() {
             Serial.printf("[wifi] config.h: %s\n", WIFI_SSID);
             WiFi.begin(WIFI_SSID, WIFI_PASS);
         }
-    }
-
-    Serial.print("[wifi] Connexion");
-    uint32_t t0 = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - t0 < 15000) {
-        vTaskDelay(pdMS_TO_TICKS(100));
+        Serial.print("[wifi] Connexion");
+        uint32_t t0 = millis();
+        while (WiFi.status() != WL_CONNECTED && millis() - t0 < 15000) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.println(" OK — " + WiFi.localIP().toString());
+        } else {
+            Serial.println(" ECHEC");
+        }
     }
 
     if (WiFi.status() == WL_CONNECTED) {
-        Serial.println(" OK — " + WiFi.localIP().toString());
         ap_stop();
         configTzTime(g_cfg.timezone, "pool.ntp.org", "time.google.com");
         Serial.printf("[ntp] TZ=%s — sync en cours...\n", g_cfg.timezone);
     } else {
-        Serial.println(" ECHEC — AP actif, reconnexion auto 30s");
+        Serial.println("[wifi] ECHEC — AP actif, reconnexion auto 30s");
     }
 
     sd_init();

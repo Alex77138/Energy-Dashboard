@@ -140,7 +140,11 @@ cp src/config.h.example src/config.h
 Éditez `src/config.h` pour renseigner votre SSID/mot de passe Wi-Fi.  
 Ces valeurs ne servent qu'au tout premier démarrage — ensuite le Wi-Fi se configure via l'interface web.
 
-### 4. Compiler et flasher
+### 4. Compiler et flasher (premier flash — câble USB requis)
+
+> Le premier flash nécessite un câble **USB-C** branché à l'ESP32-S3 et
+> PlatformIO (extension VS Code ou CLI). Les mises à jour suivantes peuvent
+> se faire sans câble via l'onglet **Mise à jour (OTA)** de l'interface web.
 
 ```bash
 pio run --target upload
@@ -219,8 +223,8 @@ Syntaxe POSIX TZ — exemples :
 
 | Valeur | Résultat |
 |---|---|
-| `0` | Connecteur USB en bas |
-| `2` | Connecteur USB en haut (180°) |
+| `0` | Connecteur USB à gauche (position normale) |
+| `2` | Connecteur USB à droite (rotation 180°) |
 
 ### Home Assistant
 
