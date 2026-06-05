@@ -54,36 +54,43 @@
 
 ## Supported Devices / Appareils supportés
 
+> **Testé personnellement** avec : Home Assistant · Shelly EM · Shelly Plug S.  
+> Les autres appareils listés sont implémentés mais **non testés** — retours bienvenus via les [issues](../../issues).
+
 ### Grid / Réseau
-| Device | Notes |
-|---|---|
-| Shelly EM (1 ou 2 phases) | |
-| Shelly 3EM (1, 2 ou 3 phases) | |
-| Shelly Pro EM / Pro 3EM | |
-| F1ATB (routeur solaire) | Puissance réseau + routage intégré |
-| Home Assistant | Entité puissance + optionnel énergie, tension, intensité |
+
+| Device | Statut | Notes |
+| --- | --- | --- |
+| Shelly EM (1 ou 2 phases) | ✅ Testé | |
+| Shelly 3EM (1, 2 ou 3 phases) | ⚠️ Non testé | |
+| Shelly Pro EM / Pro 3EM | ⚠️ Non testé | |
+| F1ATB (routeur solaire) | ⚠️ Non testé | Puissance réseau + routage intégré |
+| Home Assistant | ✅ Testé | Entité puissance + optionnel énergie, tension, intensité |
 
 ### Solar / Solaire (jusqu'à 4 sources)
-| Device | Notes |
-|---|---|
-| OpenDTU | Micro-onduleurs Hoymiles — tension DC + limite % |
-| AhoyDTU | Micro-onduleurs Hoymiles |
-| Fronius Symo / Primo | API Solar.web locale |
-| Shelly Plug S (Gen1 / Gen2+3) | |
-| Shelly EM / 3EM | 1, 2 ou 3 phases |
-| Home Assistant | Entité puissance + optionnel énergie journalière |
+
+| Device | Statut | Notes |
+| --- | --- | --- |
+| OpenDTU | ⚠️ Non testé | Micro-onduleurs Hoymiles — tension DC + limite % |
+| AhoyDTU | ⚠️ Non testé | Micro-onduleurs Hoymiles |
+| Fronius Symo / Primo | ⚠️ Non testé | API Solar.web locale |
+| Shelly Plug S (Gen1 / Gen2+3) | ✅ Testé | |
+| Shelly EM / 3EM | ✅ Testé | 1, 2 ou 3 phases |
+| Home Assistant | ✅ Testé | Entité puissance + optionnel énergie journalière |
 
 ### Battery / Batterie (jusqu'à 4)
-| Device | Notes |
-|---|---|
-| JK-BMS via ESPHome | [syssi/esphome-jk-bms](https://github.com/syssi/esphome-jk-bms) + `web_server` |
-| Home Assistant | Entités puissance, SOC, tension, intensité |
+
+| Device | Statut | Notes |
+| --- | --- | --- |
+| JK-BMS via ESPHome | ⚠️ Non testé | [syssi/esphome-jk-bms](https://github.com/syssi/esphome-jk-bms) + `web_server` |
+| Home Assistant | ✅ Testé | Entités puissance, SOC, tension, intensité |
 
 ### Router / Routeur solaire (jusqu'à 4)
-| Device | Notes |
-|---|---|
-| F1ATB | Routeur solaire français — puissance + durée + forçage |
-| Home Assistant | Entités puissance, énergie, durée, triac %, actif |
+
+| Device | Statut | Notes |
+| --- | --- | --- |
+| F1ATB | ⚠️ Non testé | Routeur solaire français — puissance + durée + forçage |
+| Home Assistant | ✅ Testé | Entités puissance, énergie, durée, triac %, actif |
 
 ---
 
