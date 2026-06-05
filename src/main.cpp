@@ -475,15 +475,15 @@ static void poll_task(void *) {
                 // Correction cumulatif → journalier
                 {
                     float g_d = tmp.grid.today_kwh - grid_base;
-                    tmp.grid.today_kwh = fmaxf(0.0f, g_d);
+                    tmp.grid.today_kwh = (!isnan(g_d) && g_d > 0.0f) ? g_d : 0.0f;
                 }
                 for (int i = 0; i < MAX_SOLAR; i++) {
                     float s_d = tmp.solar_src[i].today_kwh - solar_base[i];
-                    tmp.solar_src[i].today_kwh = fmaxf(0.0f, s_d);
+                    tmp.solar_src[i].today_kwh = (!isnan(s_d) && s_d > 0.0f) ? s_d : 0.0f;
                 }
                 for (int i = 0; i < MAX_ROUTERS; i++) {
                     float r_d = tmp.routers[i].today_kwh - router_base[i];
-                    tmp.routers[i].today_kwh = fmaxf(0.0f, r_d);
+                    tmp.routers[i].today_kwh = (!isnan(r_d) && r_d > 0.0f) ? r_d : 0.0f;
                 }
 
                 // Recalculer le total solaire après correction

@@ -639,7 +639,7 @@ details[open]>summary{color:var(--text)}
 </main>
 <div class="toast" id="toast"></div>
 <script>
-var tid=null, dayTid=null, chDay=null, ch2h=null, ch24h=null, graphTid=null;
+var tid=null, ch2h=null, ch24h=null, graphTid=null;
 
 function showTab(name,btn){
   document.querySelectorAll('.tab').forEach(function(b){b.classList.remove('active');});
@@ -652,13 +652,11 @@ function showTab(name,btn){
     startRefresh();
   } else if(name==='graph'){
     clearInterval(tid);tid=null;
-    clearInterval(dayTid);dayTid=null;
     clearInterval(graphTid);graphTid=null;
     fetchCharts();
     graphTid=setInterval(fetchCharts,300000);
   } else {
     clearInterval(tid);tid=null;
-    clearInterval(dayTid);dayTid=null;
     clearInterval(graphTid);graphTid=null;
     if(name==='config'){loadCfg();fetchStatus();if(!tid)tid=setInterval(fetchStatus,3000);}
   }

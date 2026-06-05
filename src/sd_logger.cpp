@@ -73,17 +73,18 @@ bool sd_save_daily(int yday, float grid_base, const float *solar_base, int n_sol
     uint8_t magic = 0xDB;
     uint8_t ns = (uint8_t)n_solar;
     uint8_t nr = (uint8_t)n_router;
-    f.write(&magic, 1);
-    f.write((uint8_t*)&yday,      sizeof(yday));
-    f.write((uint8_t*)&grid_base, sizeof(grid_base));
-    f.write(&ns, 1);
-    for (int i = 0; i < n_solar; i++)
-        f.write((uint8_t*)&solar_base[i], sizeof(float));
-    f.write(&nr, 1);
-    for (int i = 0; i < n_router; i++)
-        f.write((uint8_t*)&router_base[i], sizeof(float));
+    bool ok = true;
+    ok &= f.write(&magic, 1)                    == 1;
+    ok &= f.write((uint8_t*)&yday,      sizeof(yday))      == sizeof(yday);
+    ok &= f.write((uint8_t*)&grid_base, sizeof(grid_base)) == sizeof(grid_base);
+    ok &= f.write(&ns, 1) == 1;
+    for (int i = 0; i < n_solar && ok; i++)
+        ok &= f.write((uint8_t*)&solar_base[i], sizeof(float)) == sizeof(float);
+    ok &= f.write(&nr, 1) == 1;
+    for (int i = 0; i < n_router && ok; i++)
+        ok &= f.write((uint8_t*)&router_base[i], sizeof(float)) == sizeof(float);
     f.close();
-    return true;
+    return ok;
 }
 
 bool sd_load_daily(int *yday, float *grid_base, float *solar_base, int n_solar,
@@ -98,20 +99,22 @@ bool sd_load_daily(int *yday, float *grid_base, float *solar_base, int n_solar,
               f.read((uint8_t*)grid_base, sizeof(float)) == sizeof(float);
     if (!ok) { f.close(); return false; }
     uint8_t ns = 0;
-    f.read(&ns, 1);
+    if (f.read(&ns, 1) != 1) { f.close(); return false; }
     int to_read = (ns < (uint8_t)n_solar) ? ns : n_solar;
     for (int i = 0; i < to_read; i++)
-        f.read((uint8_t*)&solar_base[i], sizeof(float));
+        if (f.read((uint8_t*)&solar_base[i], sizeof(float)) != sizeof(float))
+            { f.close(); return false; }
     // Sauter les entrées solaires supplémentaires si le fichier en a plus
     for (int i = to_read; i < (int)ns; i++) {
         float dummy; f.read((uint8_t*)&dummy, sizeof(float));
     }
     if (magic == 0xDB && router_base && n_router > 0) {
         uint8_t nr = 0;
-        f.read(&nr, 1);
+        if (f.read(&nr, 1) != 1) { f.close(); return false; }
         int tr = (nr < (uint8_t)n_router) ? nr : n_router;
         for (int i = 0; i < tr; i++)
-            f.read((uint8_t*)&router_base[i], sizeof(float));
+            if (f.read((uint8_t*)&router_base[i], sizeof(float)) != sizeof(float))
+                { f.close(); return false; }
     }
     f.close();
     return true;
