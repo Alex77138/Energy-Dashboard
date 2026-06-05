@@ -5,7 +5,8 @@
 
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-ESP32--S3-orange)](https://platformio.org/)
 [![LVGL](https://img.shields.io/badge/LVGL-8.4-blue)](https://lvgl.io/)
-[![Version](https://img.shields.io/badge/firmware-V1.0-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/firmware-V1.1-green)](CHANGELOG.md)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
 ---
 
@@ -256,12 +257,6 @@ f1atb.cpp         — Driver F1ATB (routeur solaire)
 
 ---
 
-## License / Licence
-
-MIT License — voir [LICENSE](LICENSE) pour le détail.
-
----
-
 ## Credits
 
 - [LVGL](https://lvgl.io/) — GUI library
@@ -270,3 +265,15 @@ MIT License — voir [LICENSE](LICENSE) pour le détail.
 - [ArduinoJson](https://arduinojson.org/) — JSON parsing
 - [PubSubClient](https://github.com/knolleary/pubsubclient) — MQTT
 - [syssi/esphome-jk-bms](https://github.com/syssi/esphome-jk-bms) — JK-BMS ESPHome component
+
+---
+
+## License / Licence
+
+Copyright (C) 2026 Alexandre Richard
+
+Ce projet est distribué sous licence **GNU General Public License v3.0 or later**.  
+Vous êtes libre de l'utiliser, le modifier et le redistribuer, à condition de publier
+vos modifications sous la même licence.
+
+See [LICENSE](LICENSE) for the full text — [https://www.gnu.org/licenses/gpl-3.0.html](https://www.gnu.org/licenses/gpl-3.0.html)
