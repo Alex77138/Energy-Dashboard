@@ -10,6 +10,33 @@
 
 ---
 
+## Pourquoi ce projet ?
+
+En juillet 2025, j'ai installé **3 kWc de panneaux solaires** chez mes parents :
+6 panneaux Jolywood 500 Wc, 3 micro-onduleurs Hoymiles HMS-1000-2T (un par phase
+sur une installation triphasée), et 2 routeurs solaires F1ATB sur les deux
+chauffe-eau. Les panneaux sont disposés au sol par paires, orientés Est (120°),
+Sud (180°) et Ouest (240°) pour répartir la production sur toute la journée.
+
+Pour le monitoring : **OpenDTU** pour la production, **Shelly 3EM** pour la
+consommation réseau, **F1ATB** pour l'état des routeurs.
+
+Le problème : pour savoir si on peut lancer une machine à laver au bon moment,
+il fallait consulter trois interfaces différentes — OpenDTU pour la prod, Shelly
+pour le surplus, F1ATB pour voir si les chauffe-eau absorbent le reste.
+J'ai mis en place **Home Assistant** pour centraliser tout ça, mais mes parents
+continuaient de ne regarder que l'écran OpenDTU pour la production, sans voir
+le tableau d'ensemble.
+
+**La solution évidente : un écran physique permanent**, visible d'un coup d'œil
+depuis la pièce, sans téléphone, sans application. Un seul regard pour savoir
+si l'on produit, si l'on consomme, et si c'est le bon moment pour lancer
+un appareil électroménager.
+
+C'est ce qu'est Dash Energy.
+
+---
+
 ## Features / Fonctionnalités
 
 | Feature | Détail |
