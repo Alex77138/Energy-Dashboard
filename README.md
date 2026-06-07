@@ -8,6 +8,8 @@
 [![Version](https://img.shields.io/badge/firmware-V1.2-green)](CHANGELOG.md)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
+![Dash Energy — écran principal](docs/Photo/dashboard-photo.jpeg)
+
 ---
 
 ## Pourquoi ce projet ?
@@ -57,6 +59,11 @@ C'est ce qu'est Dash Energy.
 ---
 
 ## Screenshots / Captures d'écran
+
+### Écran principal (ESP32-S3)
+
+![Écran principal](docs/screenshots/screen-esp-main.png)
+*Réseau 2 W (export −414 W solaire), Autoconso 99 %, Routeur 302 W — capture directe depuis le firmware*
 
 ### Interface Web — Statut
 

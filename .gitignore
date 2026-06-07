@@ -5,3 +5,5 @@
 *.elf
 *.map
 src/config.h
+.DS_Store
+docs/**/.DS_Store
