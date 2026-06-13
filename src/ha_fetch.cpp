@@ -89,12 +89,13 @@ void ha_fetch_battery(BatteryData &out, const char *token, const BatteryConfig &
 void ha_fetch_router(RouterData &out, const char *host, const char *token,
                      const RouterConfig &rc) {
     if (!host || !host[0] || !token || !token[0]) { out.online = false; return; }
-    float power = NAN;
-    if (rc.power_entity[0]) power = fetch_entity_state(host, token, rc.power_entity);
-    if (isnan(power)) { out.online = false; return; }
-    out.online  = true;
-    out.power_w = power;
-    out.forced  = false;
+    if (rc.power_entity[0]) {
+        float power = fetch_entity_state(host, token, rc.power_entity);
+        if (isnan(power)) { out.online = false; return; }
+        out.power_w = power;
+    }
+    out.online = true;
+    out.forced = false;
 
     if (rc.energy_entity[0]) {
         float e = fetch_entity_state(host, token, rc.energy_entity);
