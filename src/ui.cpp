@@ -682,21 +682,20 @@ void ui_update(const AppData &d) {
             lv_obj_set_style_text_color(lbl_rtr_status[i], rtr.online ? C_GREEN : C_DANGER, 0);
         }
         if (rtr.online) {
-            if (rtr.power_w > 0) fmt_power(buf, sizeof(buf), rtr.power_w);
-            else if (rtr.triac_pct > 0) snprintf(buf, sizeof(buf), "%.0f%%", rtr.triac_pct);
-            else strcpy(buf, "--");
+            bool has_power = g_cfg.routers[i].power_entity[0] != '\0';
+            if (has_power && rtr.power_w > 0) fmt_power(buf, sizeof(buf), rtr.power_w);
+            else if (rtr.triac_pct > 0)       snprintf(buf, sizeof(buf), "%.0f%%", rtr.triac_pct);
+            else                              strcpy(buf, "--");
             lv_obj_set_style_text_color(lbl_rtr_power[i], rtr.active ? C_SOLAR : C_GREEN, 0);
             lv_label_set_text(lbl_rtr_power[i], buf);
             if (lbl_rtr_duration[i]) {
                 if (rtr.duration_h > 0) {
                     int hh = (int)rtr.duration_h;
                     int mm = (int)((rtr.duration_h - hh) * 60.0f + 0.5f);
-                    if (rtr.triac_pct > 0)
+                    if (has_power && rtr.triac_pct > 0)
                         snprintf(buf, sizeof(buf), "%02dh%02d  %.0f%%", hh, mm, rtr.triac_pct);
                     else
                         snprintf(buf, sizeof(buf), "%02dh%02d", hh, mm);
-                } else if (rtr.triac_pct > 0) {
-                    snprintf(buf, sizeof(buf), "%.0f%%", rtr.triac_pct);
                 } else { buf[0] = '\0'; }
                 lv_label_set_text(lbl_rtr_duration[i], buf);
             }
@@ -823,12 +822,19 @@ void ui_update(const AppData &d) {
         if (!lbl_rd_power[i]) continue;
         const auto &rtr = d.routers[i];
         if (rtr.online) {
-            fmt_power(buf, sizeof(buf), rtr.power_w);
+            bool has_power = g_cfg.routers[i].power_entity[0] != '\0';
+            if (has_power) {
+                fmt_power(buf, sizeof(buf), rtr.power_w);
+            } else {
+                // Pas d'entité puissance configurée → triac en valeur principale
+                if (rtr.triac_pct > 0) snprintf(buf, sizeof(buf), "%.0f%%", rtr.triac_pct);
+                else snprintf(buf, sizeof(buf), "--%");
+            }
             lv_label_set_text(lbl_rd_power[i], buf);
             lv_obj_set_style_text_color(lbl_rd_power[i], rtr.active ? C_SOLAR : C_GREEN, 0);
             if (lbl_rd_triac[i]) {
-                if (rtr.triac_pct > 0) snprintf(buf, sizeof(buf), "Triac: %.0f%%", rtr.triac_pct);
-                else snprintf(buf, sizeof(buf), "Triac: --%");
+                if (has_power && rtr.triac_pct > 0) snprintf(buf, sizeof(buf), "Triac: %.0f%%", rtr.triac_pct);
+                else buf[0] = '\0';
                 lv_label_set_text(lbl_rd_triac[i], buf);
             }
             char tmp[64];
