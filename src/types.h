@@ -19,8 +19,9 @@ struct MeasureData {
 struct GridData : public MeasureData {};
 
 struct SolarData : public MeasureData {
-    float dc_voltage = 0;   // OpenDTU/AhoyDTU uniquement
-    int   limit_pct  = 100; // OpenDTU/AhoyDTU uniquement
+    float dc_voltage     = 0;         // OpenDTU/AhoyDTU (non affiché sur écran)
+    int   limit_pct      = 100;       // OpenDTU : limite du premier serial
+    char  limit_str[48]  = "";        // OpenDTU : "79% / 79% / 79%" (un par serial)
 };
 
 // Alias de compatibilité pour f1atb.h

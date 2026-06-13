@@ -239,7 +239,7 @@ static void create_scr_solar() {
         lbl_sol_src_kwh[i]   = make_label(c, "Auj: --", &lv_font_montserrat_14, C_MUTED, LV_ALIGN_TOP_LEFT, 0, 68);
         lbl_sol_src_week[i]  = make_label(c, "Sem: --", &lv_font_montserrat_14, C_MUTED, LV_ALIGN_TOP_LEFT, 0, 90);
         lbl_sol_src_month[i] = make_label(c, "Mois: --", &lv_font_montserrat_14, C_MUTED, LV_ALIGN_TOP_LEFT, 0, 112);
-        lbl_sol_src_dc[i]    = nullptr; // DC/Lim non disponible avec OpenDTU compact
+        lbl_sol_src_dc[i]    = make_label(c, "", &lv_font_montserrat_14, C_MUTED, LV_ALIGN_TOP_LEFT, 0, 136);
         cx += card_w + GAP;
     }
 }
@@ -754,9 +754,9 @@ void ui_update(const AppData &d) {
         snprintf(buf, sizeof(buf), "Mois: %.2f kWh", s.month_kwh);
         lv_label_set_text(lbl_sol_src_month[i], buf);
         if (lbl_sol_src_dc[i]) {
-            if (s.dc_voltage > 0) { snprintf(buf, sizeof(buf), "DC: %.1f V  Lim: %d%%", s.dc_voltage, s.limit_pct); }
-            else if (s.voltage_v > 0) { snprintf(buf, sizeof(buf), "%.1f V  %.2f A", s.voltage_v, s.current_a); }
-            else { buf[0] = '\0'; }
+            if (s.limit_str[0])         { snprintf(buf, sizeof(buf), "Lim: %s", s.limit_str); }
+            else if (s.voltage_v > 0)   { snprintf(buf, sizeof(buf), "%.1f V  %.2f A", s.voltage_v, s.current_a); }
+            else                        { buf[0] = '\0'; }
             lv_label_set_text(lbl_sol_src_dc[i], buf);
         }
     }

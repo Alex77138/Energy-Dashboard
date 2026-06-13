@@ -86,12 +86,10 @@ bool opendtu_fetch(SolarData &out,
             // API récente OpenDTU : clés "ac" et "dc" en minuscules
             float pwr = inv["ac"]["0"]["Power"]["v"].as<float>();
             float kwh = inv["ac"]["0"]["YieldDay"]["v"].as<float>() / 1000.0f;
-            float vdc = inv["dc"]["0"]["Voltage"]["v"].as<float>();
 
             if (!inv["ac"]["0"]["Power"]["v"].isNull()) {
                 out.power_w   += pwr;
                 out.today_kwh += kwh;
-                if (vdc > 0) out.dc_voltage = vdc;
                 per_inv_found = true;
             }
             break;
@@ -109,17 +107,24 @@ bool opendtu_fetch(SolarData &out,
 
     out.online = any_reachable;
 
-    // Limit % depuis le premier serial
+    // Limite % par serial → construit limit_str "79% / 65% / 71%"
     {
-        char buf2[64];
-        strncpy(buf2, serials_str, sizeof(buf2) - 1);
-        buf2[sizeof(buf2) - 1] = '\0';
-        char *first = strtok(buf2, "/");
-        if (first && first[0]) {
-            while (*first == ' ') ++first;
-            JsonDocument lim;
-            if (http_get_json(host, user, pass, "/api/limit/status", lim) == 200)
-                out.limit_pct = lim[first]["limit_relative"].as<int>();
+        JsonDocument lim;
+        if (http_get_json(host, user, pass, "/api/limit/status", lim) == 200) {
+            char buf2[64]; strncpy(buf2, serials_str, sizeof(buf2)-1); buf2[sizeof(buf2)-1] = '\0';
+            char *t = strtok(buf2, "/");
+            bool first = true;
+            out.limit_str[0] = '\0';
+            while (t) {
+                while (*t == ' ') ++t;
+                if (t[0]) {
+                    int pct = lim[t]["limit_relative"].as<int>();
+                    if (first) { out.limit_pct = pct; first = false; }
+                    char tmp[12]; snprintf(tmp, sizeof(tmp), "%s%d%%", out.limit_str[0] ? " / " : "", pct);
+                    strncat(out.limit_str, tmp, sizeof(out.limit_str) - strlen(out.limit_str) - 1);
+                }
+                t = strtok(nullptr, "/");
+            }
         }
     }
 
