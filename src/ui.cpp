@@ -239,7 +239,7 @@ static void create_scr_solar() {
         lbl_sol_src_kwh[i]   = make_label(c, "Auj: --", &lv_font_montserrat_14, C_MUTED, LV_ALIGN_TOP_LEFT, 0, 68);
         lbl_sol_src_week[i]  = make_label(c, "Sem: --", &lv_font_montserrat_14, C_MUTED, LV_ALIGN_TOP_LEFT, 0, 90);
         lbl_sol_src_month[i] = make_label(c, "Mois: --", &lv_font_montserrat_14, C_MUTED, LV_ALIGN_TOP_LEFT, 0, 112);
-        lbl_sol_src_dc[i]    = make_label(c, "", &lv_font_montserrat_14, C_MUTED, LV_ALIGN_TOP_LEFT, 0, 136);
+        lbl_sol_src_dc[i]    = nullptr; // DC/Lim non disponible avec OpenDTU compact
         cx += card_w + GAP;
     }
 }
@@ -605,21 +605,8 @@ void ui_update(const AppData &d) {
             snprintf(buf, sizeof(buf), "Auj : %.2f kWh", d.solar.today_kwh);
             lv_label_set_text(lbl_solar_kwh, buf);
 
-            // DTU info (première source OpenDTU/AhoyDTU)
-            bool is_dtu = false;
-            for (int i = 0; i < MAX_SOLAR; i++) {
-                if (g_cfg.solars[i].device == SolarDevice::OPENDTU ||
-                    g_cfg.solars[i].device == SolarDevice::AHOYDTU) { is_dtu = true; break; }
-            }
-            if (is_dtu && lbl_solar_dc) {
-                snprintf(buf, sizeof(buf), "DC : %.1f V", d.solar.dc_voltage);
-                lv_label_set_text(lbl_solar_dc, buf);
-                snprintf(buf, sizeof(buf), "Limite : %d %%", d.solar.limit_pct);
-                lv_label_set_text(lbl_solar_limit, buf);
-            } else if (lbl_solar_dc) {
-                lv_label_set_text(lbl_solar_dc, "");
-                if (lbl_solar_limit) lv_label_set_text(lbl_solar_limit, "");
-            }
+            if (lbl_solar_dc)    lv_label_set_text(lbl_solar_dc, "");
+            if (lbl_solar_limit) lv_label_set_text(lbl_solar_limit, "");
         } else {
             lv_label_set_text(lbl_solar_status, LV_SYMBOL_CLOSE "  Hors ligne");
             lv_obj_set_style_text_color(lbl_solar_status, C_DANGER, 0);
