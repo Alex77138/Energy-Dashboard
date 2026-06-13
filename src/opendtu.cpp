@@ -99,10 +99,19 @@ bool opendtu_fetch(SolarData &out,
         tok = strtok(nullptr, "/");
     }
 
-    // Fallback : doc["total"] si aucun champ per-inverter n'a été trouvé
+    // Fallback : doc["total"] si aucun champ per-inverter n'a été trouvé.
+    // On proratise : (nb serials configurés) / (nb total onduleurs sur le DTU)
+    // → 1 source × 3 serials = 3/3 × total  ✓
+    // → 3 sources × 1 serial = 1/3 × total  ✓  (évite le triple-comptage)
     if (!per_inv_found && !doc["total"]["Power"]["v"].isNull()) {
-        out.power_w   = doc["total"]["Power"]["v"].as<float>();
-        out.today_kwh = doc["total"]["YieldDay"]["v"].as<float>() / 1000.0f;
+        int configured = 0;
+        { char tmp[64]; strncpy(tmp, serials_str, sizeof(tmp)-1);
+          char *t = strtok(tmp, "/");
+          while (t) { configured++; t = strtok(nullptr, "/"); } }
+        int total_inv = (int)inverters.size();
+        float ratio = (total_inv > 0) ? (float)configured / total_inv : 1.0f;
+        out.power_w   = doc["total"]["Power"]["v"].as<float>()   * ratio;
+        out.today_kwh = doc["total"]["YieldDay"]["v"].as<float>() / 1000.0f * ratio;
     }
 
     out.online = any_reachable;
