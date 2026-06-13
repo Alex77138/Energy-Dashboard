@@ -88,7 +88,7 @@ C'est ce qu'est Dash Energy.
 
 ## Supported Devices / Appareils supportés
 
-> **Testé personnellement** avec : Home Assistant · Shelly EM · Shelly Plug S.  
+> **Testé personnellement** avec : Home Assistant · Shelly EM · Shelly 3EM · Shelly Plug S · OpenDTU · F1ATB.  
 > Les autres appareils listés sont implémentés mais **non testés** — retours bienvenus via les [issues](../../issues).
 
 ### Grid / Réseau
@@ -96,7 +96,7 @@ C'est ce qu'est Dash Energy.
 | Device | Statut | Notes |
 | --- | --- | --- |
 | Shelly EM (1 ou 2 phases) | ✅ Testé | |
-| Shelly 3EM (1, 2 ou 3 phases) | ⚠️ Non testé | |
+| Shelly 3EM (1, 2 ou 3 phases) | ✅ Testé | |
 | Shelly Pro EM / Pro 3EM | ⚠️ Non testé | |
 | F1ATB (routeur solaire) | ⚠️ Non testé | Puissance réseau + routage intégré |
 | Home Assistant | ✅ Testé | Entité puissance + optionnel énergie, tension, intensité |
@@ -105,7 +105,7 @@ C'est ce qu'est Dash Energy.
 
 | Device | Statut | Notes |
 | --- | --- | --- |
-| OpenDTU | ⚠️ Non testé | Micro-onduleurs Hoymiles — tension DC + limite % |
+| OpenDTU | ✅ Testé | Micro-onduleurs Hoymiles — limite % par onduleur |
 | AhoyDTU | ⚠️ Non testé | Micro-onduleurs Hoymiles |
 | Fronius Symo / Primo | ⚠️ Non testé | API Solar.web locale |
 | Shelly Plug S (Gen1 / Gen2+3) | ✅ Testé | |
@@ -123,7 +123,7 @@ C'est ce qu'est Dash Energy.
 
 | Device | Statut | Notes |
 | --- | --- | --- |
-| F1ATB | ⚠️ Non testé | Routeur solaire français — puissance + durée + forçage |
+| F1ATB | ✅ Testé | Routeur solaire français — triac %, durée, forçage (via HA) |
 | Home Assistant | ✅ Testé | Entités puissance, énergie, durée, triac %, actif |
 
 ---
